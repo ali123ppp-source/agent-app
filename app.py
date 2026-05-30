@@ -49,6 +49,10 @@ def fix_arabic_swaps(text, custom_dict=None):
     text = text.replace("ىد", "دى")     # هىد -> هدى
     text = text.replace("رشى", "شرى")   # برشى -> بشرى
     text = text.replace("سحني", "حسين") # إصلاح اسم حسين
+    text = text.replace("شالل", "شلال") 
+    text = text.replace("تحسني", "تحسين") 
+    text = text.replace("امرية", "اميرة") 
+    text = text.replace("امري", "امير") 
     text = text.replace("حنس", "حسن")   # إصلاح اسم حسن
     
     # 3. قاموس الكلمات القياسي المثبت مسبقاً للحالات الشائعة
