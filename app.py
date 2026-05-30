@@ -6,7 +6,8 @@ import os
 import re
 
 # إعدادات الواجهة ودعم الاتجاه من اليمين إلى اليسار
-st.set_page_config(page_title="نظام مقارنة بيانات الوكلاء المطور", layout="wide")st.markdown("""
+st.set_page_config(page_title="نظام مقارنة بيانات الوكلاء المطور", layout="wide")
+st.markdown("""
     <style>
     th, td { text-align: right !important; }
     div.stButton > button { background-color: #1A365D; color: white; width: 100%; font-weight: bold; }
