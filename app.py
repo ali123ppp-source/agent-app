@@ -3,9 +3,10 @@ import pdfplumber
 import pandas as pd
 from io import BytesIO
 import os
+import re
 
 # إعدادات الواجهة ودعم الاتجاه من اليمين إلى اليسار
-st.set_page_config(page_title="نظام مقارنة بيانات الوكلاء المطور", layout="wide")
+st.set_page_config(page_title="نظام مقارنة بيانات الوكلاء المطور"، layout="wide")
 st.markdown("""
     <style>
     th, td { text-align: right !important; }
@@ -30,20 +31,45 @@ except ImportError:
     LIBS_READY = False
 
 # -----------------------------------------------------------------------------
-# محرّك الشفاء الإملائي الذكي
+# محرّك الشفاء الإملائي الذكي وتطهير الأسماء (تم التحديث بناءً على عينة الملف المرفوع)
 # -----------------------------------------------------------------------------
 def fix_arabic_swaps(text):
     if not text: return ""
+    
+    # قاموس موسع جداً لإصلاح تشوهات الحروف المقلوبة والناقصة والمدمجة في لستات الوكلاء
     corrections = {
-        "حنس": "حسن", "رايض": "رياض", "اثري": "اثير", "اثير": "اثير",
-        "حسني": "حسين", "حسين": "حسين", "عيل": "علي", "عالء": "علاء",
-        "هللا": "الله", "الحنس": "الحسن", "امني": "أمين", "ازناد": "زناد",
-        "مرتىض": "مرتضى", "رسهيد": "رشيد", "رسيح": "رسام", "الشبلاوي": "الشبلاوي",
-        "الشبالوي": "الشبلاوي", "شعالن": "شعلان", "منتضر": "منتظر"
+        # الأسماء الشائعة وحالات قلب الحروف
+        "حنس": "حسن", "رايض": "رياض", "اثري": "اثير", "حسني": "حسين", "الحسني": "الحسين",
+        "عيل": "علي", "عالء": "علاء", "امني": "أمين", "ازناد": "زناد", "مرتىض": "مرتضى",
+        "رسهيد": "رشيد", "رسيح": "رسام", "شعالن": "شعلان", "منتضر": "منتظر", "برشى": "بشرى",
+        "رسحان": "رسلان", "اكفائي": "الخفاجي", "العجييل": "العجيل", "الحمريي": "الحميري",
+        "جارهللا": "جار الله", "عبدالحسني": "عبد الحسين", "حسنيه": "حسنية", "خالده": "خالدة",
+        "كريمه": "كريمة", "مظلومه": "مظلومة", "حمزه": "حمزة", "زهره": "زهرة",
+        
+        # الكلمات المدمجة مع لفظ الجلالة أو الأسماء المركبة
+        "هللا": "الله", "عبدالحسن": "عبد الحسين", "عبدالرحمن": "عبد الرحمن", 
+        "عبدالرزاق": "عبد الرزاق", "عبدالامير": "عبد الأمير", "عبدالله": "عبد الله",
+        
+        # العشائر والألقاب الشائعة الممسوخة بسبب الـ PDF
+        "الشبالوي": "الشبلاوي", "الشبلاوي": "الشبلاوي", "السلطاني": "السلطاني",
+        "الدليمي": "الدليمي", "الجرواني": "الجرواني", "البعيجي": "البعيجي", 
+        "المعموري": "المعموري", "اليساري": "اليساري", "المشايخي": "المشايخي"
     }
+    
+    # تنظيف مسبق للحروف الغريبة والرموز التي تظهر أحياناً وسط الأسماء
+    text = re.sub(re.compile(r'[^\w\s\s]'), '', text)
+    
     words = text.split()
     fixed_words = [corrections.get(w, w) for w in words]
-    return " ".join(fixed_words)
+    
+    # معالجة المسافات الزائدة وإعادة دمج النص بشكل نظيف
+    cleaned_text = " ".join(fixed_words)
+    
+    # إصلاح الأخطاء المركبة الملتصقة التي لم تعالج في فصل الكلمات
+    cleaned_text = cleaned_text.replace("جارهللا", "جار الله")
+    cleaned_text = cleaned_text.replace("عبدالحسني", "عبد الحسين")
+    
+    return cleaned_text
 
 def fix_arabic_text(text):
     if not text: return ""
@@ -69,6 +95,7 @@ def extract_data_from_pdf(file_obj, fix_reversed_arabic=True):
                         if cell:
                             val = str(cell).strip().replace('\n', ' ')
                             if fix_reversed_arabic and any('\u0600' <= char <= '\u06FF' for char in val):
+                                # عكس النص إذا كان مقلوباً وتمريره لمعالج الفرز والشفاء الإملائي
                                 val = val[::-1]
                                 val = fix_arabic_swaps(val)
                             cells.append(val)
@@ -79,7 +106,7 @@ def extract_data_from_pdf(file_obj, fix_reversed_arabic=True):
                         continue
                     
                     try:
-                        # 1. استخراج التسلسل (ت) بشكل ذكي جداً
+                        # 1. استخراج التسلسل (ت) بشكل عكسي ذكي
                         seq = "-"
                         for i in range(len(cells)-1, -1, -1):
                             if cells[i].isdigit() and 0 < len(cells[i]) <= 4:
@@ -97,13 +124,13 @@ def extract_data_from_pdf(file_obj, fix_reversed_arabic=True):
                         if not card_num:
                             continue
                             
-                        # 3. استخراج الاسم
+                        # 3. استخراج الاسم وتمريره لفلتر التطهير النهائي
                         name = ""
                         if len(cells) > 4 and not cells[4].isdigit() and len(cells[4]) > 4:
-                            name = cells[4]
+                            name = fix_arabic_swaps(cells[4])
                         else:
                             non_digits = [c for c in cells if not c.isdigit() and len(c) > 3]
-                            if non_digits: name = non_digits[0]
+                            if non_digits: name = fix_arabic_swaps(non_digits[0])
 
                         # 4. الحقول الرقمية
                         eligible = int(cells[1]) if len(cells) > 1 and cells[1].isdigit() else 0
@@ -184,7 +211,7 @@ def generate_pdf_report(df_results, title_text):
         
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
-        'TitleStyle', parent=styles['Heading1'], fontName='ArabicArial', fontSize=16,
+        'TitleStyle', parent=styles['Heading1'], fontName='ArabicArial', fontSize=14,
         alignment=2, textColor=colors.HexColor('#1A365D'), spaceAfter=25
     )
     
@@ -213,9 +240,9 @@ def generate_pdf_report(df_results, title_text):
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, -1), 'ArabicArial'),
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
-        ('TOPPADDING', (0, 0), (-1, -1), 7),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#BDC3C7')),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8F9F9')])
     ]))
@@ -231,8 +258,8 @@ def generate_pdf_report(df_results, title_text):
 # -----------------------------------------------------------------------------
 # واجهة المستخدم 
 # -----------------------------------------------------------------------------
-st.markdown("<h4 style='text-align: right;'>⚙️ خيارات المعالجة المتقدمة</h4>", unsafe_allow_html=True)
-fix_reversed = st.checkbox("🔄 تفعيل الإصلاح المتقدم الذكي لتشوهات النصوص والأسماء المعكوسة", value=True)
+st.markdown("<h4 style='text-align: right;'>⚙️ خيارات المعالجة والشفاء الإملائي المتقدم للأسماء</h4>", unsafe_allow_html=True)
+fix_reversed = st.checkbox("🔄 تفعيل مصحح ومطهر الأسماء الذكي التلقائي (يوصى به لملفات الـ PDF المخربطة)", value=True)
 
 col1, col2 = st.columns(2)
 
@@ -246,9 +273,9 @@ with col2:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-if st.button("شغل المحرك وابدأ المقارنة وتصحيح الأسماء الآن"):
+if st.button("شغل المحرك وابدأ المقارنة وتطهير الأسماء الممسوخة الآن"):
     if old_file and new_file:
-        with st.spinner('جاري قراءة الملفات، تطهير الأسماء المخربطة والتقاط التسلسل الأصلي...'):
+        with st.spinner('جاري قراءة الجداول، تصحيح تشوهات الأسماء وتثبيت التسلسل الأصلي...'):
             old_extracted = extract_data_from_pdf(old_file, fix_reversed_arabic=fix_reversed)
             new_extracted = extract_data_from_pdf(new_file, fix_reversed_arabic=fix_reversed)
             
@@ -267,10 +294,7 @@ if st.button("شغل المحرك وابدأ المقارنة وتصحيح ال�
                 c_mod.metric("عوائل تم تعديل أفرادها", total_mod)
                 c_del.metric("عوائل تم نقلها/حذفها", total_del)
                 
-                # إنشاء عنوان ديناميكي يحتوي على أسماء الملفات المدخلة
                 dynamic_title = f"جدول الفروقات التفصيلي بين لستة ({old_file.name}) و لستة ({new_file.name})"
-                
-                # عرض العنوان أعلى الجدول مباشرة في المتصفح
                 st.markdown(f"<h3 style='text-align: right; color: #1A365D; border-bottom: 2px solid #1A365D; padding-bottom: 8px;'>📋 {dynamic_title}</h3>", unsafe_allow_html=True)
                 
                 df_display = df_results.copy()
@@ -284,7 +308,6 @@ if st.button("شغل المحرك وابدأ المقارنة وتصحيح ال�
                 st.markdown("<br>", unsafe_allow_html=True)
                 
                 if LIBS_READY:
-                    # تمرير العنوان الديناميكي ليوضع داخل الـ PDF أيضاً
                     pdf_data = generate_pdf_report(df_results, f"تقرير الفروقات النهائي بين: {old_file.name} و {new_file.name}")
                     st.download_button(
                         label="📥 تحميل تقرير الفروقات النهائي كملف PDF للطباعة",
