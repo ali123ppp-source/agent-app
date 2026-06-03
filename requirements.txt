@@ -1,5 +1,5 @@
 streamlit
-pdfplumber
+python-docx
 pandas
 reportlab
 arabic-reshaper
