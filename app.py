@@ -3,18 +3,19 @@ import pandas as pd
 from io import BytesIO
 import os
 
-# إعدادات الواجهة
-st.set_page_config(page_title="نظام مقارنة بيانات الوكلاء (نسخة الوورد)", layout="wide")
+# إعدادات الواجهة ودعم الاتجاه العربي
+st.set_page_config(page_title="نظام مقارنة بيانات الوكلاء الدقيق", layout="wide")
 st.markdown("""
     <style>
-    th, td { text-align: right !important; }
+    th, td { text-align: right !important; dir: rtl !important; }
     div.stButton > button { background-color: #1A365D; color: white; width: 100%; font-weight: bold; }
+    .report-box { background-color: #F0F4F8; padding: 15px; border-radius: 8px; border-right: 5px solid #1A365D; text-align: right; }
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align: right;'>نظام مقارنة ملفات الوكلاء الذكي (Word) 📄🔎</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: right;'>نظام مقارنة ملفات الوكلاء الذكي والمطوّر 📄🔎</h1>", unsafe_allow_html=True)
 
-# التحقق من توفر المكتبات
+# التحقق من توفر مكتبات تصدير الـ PDF ودعم اللغة العربية
 try:
     from docx import Document
     import arabic_reshaper
@@ -38,90 +39,148 @@ def fix_arabic_text(text):
         return str(text)
 
 # -----------------------------------------------------------------------------
-# محرك استخراج البيانات من ملف الوورد (يحافظ على هيكل الجدول الأصلي)
+# محرك الاستخراج الذكي جداً (مقاوم لاختلاف دمج الخلايا والأعمدة)
 # -----------------------------------------------------------------------------
-def extract_data_from_word(file_obj):
+def extract_clean_records(file_obj):
     doc = Document(file_obj)
     records = {}
-    headers = []
     
-    id_col_name = ""   # اسم عمود رقم البطاقة
-    name_col_name = "" # اسم عمود الاسم
-
     for table in doc.tables:
-        for i, row in enumerate(table.rows):
-            # استخراج النصوص من الخلايا وتنظيفها
+        for row in table.rows:
+            # استخراج النصوص وتنظيفها من الفراغات والأصناف الزائدة
             cells = [cell.text.strip().replace('\n', ' ') for cell in row.cells]
             
-            # 1. البحث عن صف العناوين (الهيدر)
-            if not headers and any("بطاقة" in c for c in cells):
-                headers = cells
-                # تحديد أسماء الأعمدة الهامة للمقارنة والترتيب
-                for h in headers:
-                    if "بطاقة" in h: id_col_name = h
-                    if "اسم" in h or "الاسم" in h: name_col_name = h
+            # تخطي أسطر العناوين الرئيسية للمركز أو اسم الوكيل
+            if not any(cells) or "المركز" in "".join(cells) or "الوكيل" in "".join(cells) or "اسم رب" in "".join(cells):
                 continue
-
-            # 2. استخراج البيانات وربطها بالعناوين
-            if headers and len(cells) == len(headers):
-                # تخطي الصفوف الفارغة أو صفوف العناوين المكررة
-                if not any(cells) or "المركز" in "".join(cells) or "الوكيل" in "".join(cells):
-                    continue
+            
+            # 1. التقاط اسم رب الأسرة (أطول نص عربي في السطر لا يحتوي على أرقام)
+            name_idx = -1
+            max_len = 0
+            for i, c in enumerate(cells):
+                if any('\u0600' <= char <= '\u06FF' for char in c) and not any(char.isdigit() for char in c):
+                    if len(c) > max_len:
+                        max_len = len(c)
+                        name_idx = i
+            
+            if name_idx == -1:
+                continue # سطر غير صالح أو فارغ من الأسماء
+            
+            # 2. التقاط أرقام البطاقات (الخلايا الرقمية التي طولها 5 أرقام فما فوق)
+            card_indices = [i for i, c in enumerate(cells) if c.isdigit() and len(c) >= 5]
+            if not card_indices:
+                continue
+            
+            # رقم البطاقة الرئيسي يكون دائماً الرقم الثاني أو الأخير قبل التسلسل
+            if len(card_indices) >= 2:
+                card_num = cells[card_indices[1]]
+            else:
+                card_num = cells[card_indices[0]]
                 
-                # إنشاء قاموس يمثل الصف، وربط كل قيمة باسم العمود الخاص بها
-                row_data = {headers[j]: cells[j] for j in range(len(headers))}
+            # 3. التقاط التسلسل (ت) يكون رقماً يقع بعد عمود البطاقة في نهاية السطر
+            seq = "-"
+            for i in range(len(cells)-1, card_indices[-1], -1):
+                if cells[i].isdigit():
+                    seq = cells[i]
+                    break
+            
+            # 4. التقاط الحقول الرقمية الحسابية (المحجوبين، المستحقة، الكلية) قبل الاسم
+            # في الملفات الأصلية تظهر بالترتيب: المحجوبين ثم المستحقة ثم الكلية
+            digit_cells = [int(cells[i]) for i in range(name_idx) if cells[i].isdigit()]
+            
+            if len(digit_cells) >= 3:
+                withheld = digit_cells[0]
+                eligible = digit_cells[1]
+                total = digit_cells[2]
+            elif len(digit_cells) == 2:
+                withheld = 0
+                eligible = digit_cells[0]
+                total = digit_cells[1]
+            else:
+                continue # قيد ناقص الأرقام الحسابية
                 
-                # استخدام رقم البطاقة كمفتاح أساسي وفريد
-                if id_col_name and row_data.get(id_col_name) and row_data[id_col_name].isdigit():
-                    card_num = row_data[id_col_name]
-                    records[card_num] = row_data
-                    
-    return records, headers, name_col_name
+            records[card_num] = {
+                "seq": seq,
+                "name": cells[name_idx],
+                "total": total,
+                "eligible": eligible,
+                "withheld": withheld
+            }
+    return records
 
 # -----------------------------------------------------------------------------
-# محرك المقارنة 
+# محرك المقارنة وحساب التغيرات الدقيقة لكل حقل
 # -----------------------------------------------------------------------------
-def compare_word_records(old_data, new_data, headers):
+def compare_records(old_data, new_data):
     results = []
+    counters = {"name": 0, "total": 0, "eligible": 0, "withheld": 0}
     
-    # 1. البحث عن المحذوفين والمعدلين
-    for card_num, old_row in old_data.items():
-        if card_num in new_data:
-            new_row = new_data[card_num]
-            changes = []
+    all_cards = set(old_data.keys()).union(set(new_data.keys()))
+    
+    for card_num in all_cards:
+        # حالة 1: القيد موجود في الملفين (فحص التعديلات الداخلية)
+        if card_num in old_data and card_num in new_data:
+            old_val = old_data[card_num]
+            new_val = new_data[card_num]
             
-            # مقارنة كل حقل بحقله (باستثناء التسلسل لأنه يتغير طبيعياً)
-            for h in headers:
-                if "تسلسل" not in h and "ت" != h.strip():
-                    val_old = old_row.get(h, "")
-                    val_new = new_row.get(h, "")
-                    if val_old != val_new:
-                        changes.append(f"({h}): من [{val_old}] إلى [{val_new}]")
+            name_chg = old_val["name"] != new_val["name"]
+            total_chg = old_val["total"] != new_val["total"]
+            elig_chg = old_val["eligible"] != new_val["eligible"]
+            with_chg = old_val["withheld"] != new_val["withheld"]
             
-            if changes:
-                result_row = new_row.copy()
-                result_row["نوع التغيير"] = "تعديل في البيانات"
-                result_row["تفاصيل المتغيرات"] = " | ".join(changes)
-                results.append(result_row)
+            if name_chg or total_chg or elig_chg or with_chg:
+                if name_chg: counters["name"] += 1
+                if total_chg: counters["total"] += 1
+                if elig_chg: counters["eligible"] += 1
+                if with_chg: counters["withheld"] += 1
+                
+                results.append({
+                    "التسلسل": new_val["seq"],
+                    "رقم البطاقة": card_num,
+                    "اسم رب الأسرة": new_val["name"],
+                    "الأفراد الكلية": new_val["total"],
+                    "الأفراد المستحقة": new_val["eligible"],
+                    "الأفراد المحجوبين": new_val["withheld"]
+                })
+                
+        # حالة 2: قيد محذوف أو منقول (موجود في القديم ومرفوع من الجديد)
+        elif card_num in old_data:
+            old_val = old_data[card_num]
+            counters["name"] += 1
+            counters["total"] += 1
+            counters["eligible"] += 1
+            counters["withheld"] += 1
             
-            del new_data[card_num] # إزالة المطابق والمعدل من القائمة الجديدة
-        else:
-            result_row = old_row.copy()
-            result_row["نوع التغيير"] = "محذوف / منقول"
-            result_row["تفاصيل المتغيرات"] = "تم رفع العائلة من قائمة الوكيل في الشهر الجديد"
-            results.append(result_row)
-
-    # 2. الباقي في القائمة الجديدة هم المضافون حديثاً
-    for card_num, new_row in new_data.items():
-        result_row = new_row.copy()
-        result_row["نوع التغيير"] = "مضاف حديثا"
-        result_row["تفاصيل المتغيرات"] = "عائلة جديدة تم إنزالها لدى الوكيل"
-        results.append(result_row)
-        
-    return results
+            results.append({
+                "التسلسل": old_val["seq"],
+                "رقم البطاقة": card_num,
+                "اسم رب الأسرة": old_val["name"] + " (تم حذفه/نقله)",
+                "الأفراد الكلية": 0,
+                "الأفراد المستحقة": 0,
+                "الأفراد المحجوبين": 0
+            })
+            
+        # حالة 3: قيد مضاف حديثاً (موجود في الجديد فقط)
+        elif card_num in new_data:
+            new_val = new_data[card_num]
+            counters["name"] += 1
+            counters["total"] += 1
+            counters["eligible"] += 1
+            counters["withheld"] += 1
+            
+            results.append({
+                "التسلسل": new_val["seq"],
+                "رقم البطاقة": card_num,
+                "اسم رب الأسرة": new_val["name"] + " (مضاف حديثاً)",
+                "الأفراد الكلية": new_val["total"],
+                "الأفراد المستحقة": new_val["eligible"],
+                "الأفراد المحجوبين": new_val["withheld"]
+            })
+            
+    return results, counters
 
 # -----------------------------------------------------------------------------
-# دالة توليد ملف الـ PDF 
+# دالة توليد تقرير الـ PDF المطابق للجدول
 # -----------------------------------------------------------------------------
 def generate_pdf_report(df_results, title_text):
     buffer = BytesIO()
@@ -135,37 +194,22 @@ def generate_pdf_report(df_results, title_text):
     except Exception: pass
         
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        'TitleStyle', parent=styles['Heading1'], fontName='ArabicArial', fontSize=16,
-        alignment=2, textColor=colors.HexColor('#1A365D'), spaceAfter=20
-    )
-    cell_text_style = ParagraphStyle('CellTextStyle', fontName='ArabicArial', fontSize=9, alignment=2, textColor=colors.black, leading=12)
-    header_text_style = ParagraphStyle('HeaderStyle', fontName='ArabicArial', fontSize=10, alignment=2, textColor=colors.white, fontStyle='Bold')
+    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontName='ArabicArial', fontSize=16, alignment=2, textColor=colors.HexColor('#1A365D'), spaceAfter=20)
+    cell_text_style = ParagraphStyle('CellTextStyle', fontName='ArabicArial', fontSize=10, alignment=2, textColor=colors.black, leading=12)
+    header_text_style = ParagraphStyle('HeaderStyle', fontName='ArabicArial', fontSize=11, alignment=2, textColor=colors.white)
     
     original_cols = list(df_results.columns)
-    reversed_cols = original_cols[::-1]
+    reversed_cols = original_cols[::-1] # عكس الاتجاه للـ ReportLab
     
     table_data = [[Paragraph(fix_arabic_text(col), header_text_style) for col in reversed_cols]]
     
     for _, row in df_results.iterrows():
         row_cells = []
         for col in reversed_cols:
-            val = str(row[col])
-            if col == "نوع التغيير":
-                if "تعديل" in val: val = "تعديل في البيانات"
-                elif "محذوف" in val: val = "محذوف / منقول"
-                elif "مضاف" in val: val = "مضاف حديثاً"
-            row_cells.append(Paragraph(fix_arabic_text(val), cell_text_style))
+            row_cells.append(Paragraph(fix_arabic_text(str(row[col])), cell_text_style))
         table_data.append(row_cells)
         
-    # حساب العرض التقريبي للأعمدة بناءً على عددها
-    col_width = 800 / len(reversed_cols) if reversed_cols else 100
-    col_widths = [col_width] * len(reversed_cols)
-    
-    # تكبير عمود التفاصيل والاسم إذا كانا موجودين
-    for i, col in enumerate(reversed_cols):
-        if "تفاصيل" in col: col_widths[i] = 200
-        elif "اسم" in col or "الاسم" in col: col_widths[i] = 150
+    col_widths = [100, 100, 100, 260, 140, 80] # الأبعاد المتناسقة للأعمدة الستة
     
     t = Table(table_data, colWidths=col_widths, repeatRows=1)
     t.setStyle(TableStyle([
@@ -185,7 +229,7 @@ def generate_pdf_report(df_results, title_text):
     return buffer
 
 # -----------------------------------------------------------------------------
-# واجهة المستخدم 
+# واجهة المستخدم ونقاط الرفع والتنفيذ
 # -----------------------------------------------------------------------------
 col1, col2 = st.columns(2)
 
@@ -199,62 +243,80 @@ with col2:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-if st.button("شغل المحرك وابدأ المقارنة الدقيقة للوورد الآن"):
+if st.button("شغل المحرك وابدأ المقارنة المطلقة وحساب التغيرات الآن"):
     if old_file and new_file:
-        with st.spinner('جاري قراءة ملفات الوورد واستخراج الجداول والفروقات...'):
+        with st.spinner('جاري قراءة الملفات وتحليل الحقول الحسابية والأسماء بدقة متناهية...'):
             try:
-                # الاستخراج
-                old_extracted, old_headers, name_col = extract_data_from_word(old_file)
-                new_extracted, new_headers, _ = extract_data_from_word(new_file)
+                old_data = extract_clean_records(old_file)
+                new_data = extract_clean_records(new_file)
                 
-                # استخدام عناوين الملف الجديد كأساس، وإضافة عمودي التغييرات
-                final_headers = new_headers + ["نوع التغيير", "تفاصيل المتغيرات"]
-                
-                # المقارنة
-                results = compare_word_records(old_extracted, new_extracted, new_headers)
+                results, report_counters = compare_records(old_data, new_data)
                 
                 if results:
-                    # الترتيب الأبجدي بناءً على عمود الاسم
-                    if name_col:
-                        results = sorted(results, key=lambda x: str(x.get(name_col, "")))
+                    # الترتيب الأبجدي الإجباري بناءً على اسم رب الأسرة
+                    results = sorted(results, key=lambda x: str(x.get("اسم رب الأسرة", "")))
                     
-                    # ترتيب الأعمدة لتتطابق مع هيكل الملف الأصلي
-                    df_results = pd.DataFrame(results)[final_headers]
+                    # تحويل المخرجات إلى DataFrame بالترتيب الصحيح للأعمدة
+                    headers_order = ["التسلسل", "رقم البطاقة", "اسم رب الأسرة", "الأفراد الكلية", "الأفراد المستحقة", "الأفراد المحجوبين"]
+                    df_results = pd.DataFrame(results)[headers_order]
                     
-                    total_mod = len(df_results[df_results["نوع التغيير"] == "تعديل في البيانات"])
-                    total_del = len(df_results[df_results["نوع التغيير"] == "محذوف / منقول"])
-                    total_new = len(df_results[df_results["نوع التغيير"] == "مضاف حديثا"])
-                    
-                    st.markdown("<h3 style='text-align: right;'>📊 ملخص الفروقات المكتشفة</h3>", unsafe_allow_html=True)
-                    c_new, c_mod, c_del = st.columns(3)
-                    c_new.metric("عوائل مضافة جديدة", total_new)
-                    c_mod.metric("عوائل تم تعديل أفرادها", total_mod)
-                    c_del.metric("عوائل تم نقلها/حذفها", total_del)
-                    
-                    dynamic_title = f"جدول الفروقات التفصيلي بين ({old_file.name}) و ({new_file.name})"
+                    # عرض عنوان الجدول
+                    dynamic_title = f"جدول الفروقات والمستجدات بين قائمة ({old_file.name}) و قائمة ({new_file.name})"
                     st.markdown(f"<h3 style='text-align: right; color: #1A365D; border-bottom: 2px solid #1A365D; padding-bottom: 8px;'>📋 {dynamic_title} (مرتب أبجدياً)</h3>", unsafe_allow_html=True)
                     
-                    df_display = df_results.copy()
-                    df_display["نوع التغيير"] = df_display["نوع التغيير"].map({
-                        "تعديل في البيانات": "🟡 تعديل في البيانات",
-                        "محذوف / منقول": "🔴 محذوف / منقول",
-                        "مضاف حديثا": "🟢 مضاف حديثاً"
-                    })
-                    st.dataframe(df_display, use_container_width=True, hide_index=True)
+                    # عرض الجدول النظيف الخالي من حقول نوع التغيير
+                    st.dataframe(df_results, use_container_width=True, hide_index=True)
+                    
+                    # ---------------------------------------------------------
+                    # تقرير أسفل كل حقل بعدد التغييرات التي حدثت ضمنه
+                    # ---------------------------------------------------------
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.markdown("<h3 style='text-align: right;'>📊 تقرير إحصاء التغيرات المكتشفة لكل حقل</h3>", unsafe_allow_html=True)
+                    
+                    rep_col1, rep_col2, rep_col3, rep_col4 = st.columns(4)
+                    
+                    with rep_col1:
+                        st.markdown(f"""<div class='report-box'>
+                            <h5>حقل الأفراد المحجوبين</h5>
+                            <h2 style='color:#E67E22;'>{report_counters['withheld']}</h2>
+                            <p style='font-size:12px;color:#7F8C8D;'>تغيير في أعداد المحجوبين</p>
+                        </div>""", unsafe_allow_html=True)
+                        
+                    with rep_col2:
+                        st.markdown(f"""<div class='report-box'>
+                            <h5>حقل الأفراد المستحقة</h5>
+                            <h2 style='color:#2980B9;'>{report_counters['eligible']}</h2>
+                            <p style='font-size:12px;color:#7F8C8D;'>تغيير في أعداد المستحقين</p>
+                        </div>""", unsafe_allow_html=True)
+                        
+                    with rep_col3:
+                        st.markdown(f"""<div class='report-box'>
+                            <h5>حقل الأفراد الكلية</h5>
+                            <h2 style='color:#27AE60;'>{report_counters['total']}</h2>
+                            <p style='font-size:12px;color:#7F8C8D;'>تغيير في المجموع الكلي</p>
+                        </div>""", unsafe_allow_html=True)
+                        
+                    with rep_col4:
+                        st.markdown(f"""<div class='report-box'>
+                            <h5>حقل اسم رب الأسرة</h5>
+                            <h2 style='color:#8E44AD;'>{report_counters['name']}</h2>
+                            <p style='font-size:12px;color:#7F8C8D;'>تعديل إملائي أو نقل/إضافة اسم</p>
+                        </div>""", unsafe_allow_html=True)
                     
                     st.markdown("<br>", unsafe_allow_html=True)
                     
+                    # زر تحميل الـ PDF
                     if LIBS_READY:
-                        pdf_data = generate_pdf_report(df_results, f"تقرير الفروقات النهائي بين: {old_file.name} و {new_file.name}")
+                        pdf_data = generate_pdf_report(df_results, f"تقرير الفروقات النهائي المعتمد لـ: {new_file.name}")
                         st.download_button(
-                            label="📥 تحميل تقرير الفروقات النهائي كملف PDF",
-                            data=pdf_data, file_name=f"فروقات_{new_file.name}.pdf", mime="application/pdf",
+                            label="📥 تحميل التقرير النهائي كملف PDF جاهز للطباعة والتوقيع",
+                            data=pdf_data, file_name=f"تقرير_فروقات_{new_file.name}.pdf", mime="application/pdf",
                         )
                     else:
-                        st.error("لا يمكن تحميل الـ PDF لعدم تثبيت المكتبات الداعمة.")
+                        st.error("لا يمكن تحميل ملف الـ PDF لعدم توفر المكتبات الداعمة على الخادم.")
                 else:
-                    st.success("🎉 تطابق تام! لم يتم العثور على أي تغيير أو تعديل بين القائمتين.")
+                    st.success("🎉 تطابق تام ومطلق! لم يسجل النظام أي تغيير في الأسماء أو الحقول الحسابية للأفراد.")
             except Exception as e:
-                st.error(f"حدث خطأ أثناء قراءة ملفات الوورد، يرجى التأكد من أن الملفات تحتوي على جداول نظامية. تفاصيل الخطأ: {e}")
+                st.error(f"حدث خطأ أثناء معالجة الجداول البرمجية، يرجى مراجعة صياغة الملف. تفاصيل الإشكال التقني: {e}")
     else:
-        st.error("الرجاء التأكد من رفع كلا الملفين (القديم والجديد) بصيغة Word لتتمكن من المقارنة.")
+        st.error("الرجاء رفع كلا الملفين بصيغة Word (.docx) لتتمكن من تشغيل محرك المقارنة المطور.")
