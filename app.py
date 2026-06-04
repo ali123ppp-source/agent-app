@@ -15,8 +15,8 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align: right;'>نظام المقارنة الشامل والذكي 📄🔁</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: right;'>يقوم بمقارنة ملفين بغض النظر عن الأقدمية بالاعتماد الكلي على أرقام البطاقات.</p>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: right;'>نظام المقارنة الشامل والذكي 📄🔎</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: right;'>يقوم بمقارنة ملف الشهر الجديد بناءً على ملف الشهر القديم لاستخراج المتغيرات الدقيقة.</p>", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
 # محرك الاستخراج الدقيق
@@ -73,23 +73,23 @@ def extract_clean_records(file_obj):
     return records
 
 # -----------------------------------------------------------------------------
-# محرك المقارنة المتكافئ
+# محرك المقارنة (القديم مقابل الجديد)
 # -----------------------------------------------------------------------------
-def compare_symmetric(data1, data2):
+def compare_records(old_data, new_data):
     results = []
-    counters = {"name": 0, "total": 0, "eligible": 0, "withheld": 0, "only_in_1": 0, "only_in_2": 0}
+    counters = {"name": 0, "total": 0, "eligible": 0, "withheld": 0, "added": 0, "deleted": 0}
     
-    all_cards = set(data1.keys()).union(set(data2.keys()))
+    all_cards = set(old_data.keys()).union(set(new_data.keys()))
     
     for card in all_cards:
-        # موجود في كلا الملفين
-        if card in data1 and card in data2:
-            v1, v2 = data1[card], data2[card]
+        # موجود في كلا الملفين (تعديل بيانات)
+        if card in old_data and card in new_data:
+            old_v, new_v = old_data[card], new_data[card]
             
-            diff_name = v1["name"] != v2["name"]
-            diff_total = v1["total"] != v2["total"]
-            diff_elig = v1["eligible"] != v2["eligible"]
-            diff_with = v1["withheld"] != v2["withheld"]
+            diff_name = old_v["name"] != new_v["name"]
+            diff_total = old_v["total"] != new_v["total"]
+            diff_elig = old_v["eligible"] != new_v["eligible"]
+            diff_with = old_v["withheld"] != new_v["withheld"]
             
             if diff_name or diff_total or diff_elig or diff_with:
                 if diff_name: counters["name"] += 1
@@ -98,38 +98,38 @@ def compare_symmetric(data1, data2):
                 if diff_with: counters["withheld"] += 1
                 
                 results.append({
-                    "التسلسل": v2["seq"],
+                    "التسلسل": new_v["seq"],
                     "رقم البطاقة": card,
-                    "اسم رب الأسرة": v2["name"],
-                    "الأفراد الكلية": v2["total"],
-                    "الأفراد المستحقة": v2["eligible"],
-                    "الأفراد المحجوبين": v2["withheld"]
+                    "اسم رب الأسرة": new_v["name"],
+                    "الأفراد الكلية": new_v["total"],
+                    "الأفراد المستحقة": new_v["eligible"],
+                    "الأفراد المحجوبين": new_v["withheld"]
                 })
                 
-        # موجود في الملف الأول فقط (إما تم حذفه في الثاني، أو مضاف في الأول)
-        elif card in data1 and card not in data2:
-            v1 = data1[card]
-            counters["only_in_1"] += 1
+        # موجود في القديم ومفقود في الجديد (محذوف / منقول)
+        elif card in old_data and card not in new_data:
+            old_v = old_data[card]
+            counters["deleted"] += 1
             results.append({
-                "التسلسل": v1["seq"],
+                "التسلسل": old_v["seq"],
                 "رقم البطاقة": card,
-                "اسم رب الأسرة": v1["name"] + " (موجود في الملف 1 فقط)",
-                "الأفراد الكلية": v1["total"],
-                "الأفراد المستحقة": v1["eligible"],
-                "الأفراد المحجوبين": v1["withheld"]
+                "اسم رب الأسرة": old_v["name"] + " (محذوف / منقول)",
+                "الأفراد الكلية": old_v["total"],
+                "الأفراد المستحقة": old_v["eligible"],
+                "الأفراد المحجوبين": old_v["withheld"]
             })
             
-        # موجود في الملف الثاني فقط
-        elif card not in data1 and card in data2:
-            v2 = data2[card]
-            counters["only_in_2"] += 1
+        # غير موجود في القديم وموجود في الجديد (مضاف حديثاً)
+        elif card not in old_data and card in new_data:
+            new_v = new_data[card]
+            counters["added"] += 1
             results.append({
-                "التسلسل": v2["seq"],
+                "التسلسل": new_v["seq"],
                 "رقم البطاقة": card,
-                "اسم رب الأسرة": v2["name"] + " (موجود في الملف 2 فقط)",
-                "الأفراد الكلية": v2["total"],
-                "الأفراد المستحقة": v2["eligible"],
-                "الأفراد المحجوبين": v2["withheld"]
+                "اسم رب الأسرة": new_v["name"] + " (مضاف حديثاً)",
+                "الأفراد الكلية": new_v["total"],
+                "الأفراد المستحقة": new_v["eligible"],
+                "الأفراد المحجوبين": new_v["withheld"]
             })
             
     return results, counters
@@ -142,8 +142,7 @@ def create_word_table_report(df, title):
     heading = doc.add_heading(title, level=1)
     heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
     
-    # عكس ترتيب الأعمدة لتظهر من اليمين لليسار في برنامج وورد
-    cols = list(df.columns)[::-1]
+    cols = list(df.columns)[::-1] # عكس الترتيب ليتوافق مع اليمين لليسار في وورد
     
     table = doc.add_table(rows=1, cols=len(cols))
     table.style = 'Table Grid'
@@ -169,7 +168,7 @@ def create_word_table_report(df, title):
 
 def create_word_stats_report(counters, filename_base):
     doc = Document()
-    heading = doc.add_heading(f"تقرير إحصاء المتغيرات - {filename_base}", level=1)
+    heading = doc.add_heading(f"تقرير إحصاء المتغيرات لشهر - {filename_base}", level=1)
     heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
     
     doc.add_paragraph().add_run().add_break()
@@ -179,8 +178,8 @@ def create_word_stats_report(counters, filename_base):
         ("عدد التغييرات في الأفراد المستحقة:", counters['eligible']),
         ("عدد التغييرات في الأفراد المحجوبين:", counters['withheld']),
         ("عدد التغييرات في أسماء أرباب الأسر:", counters['name']),
-        ("عوائل موجودة في الملف الأول فقط:", counters['only_in_1']),
-        ("عوائل موجودة في الملف الثاني فقط:", counters['only_in_2']),
+        ("عوائل تم إضافتها حديثاً في هذا الشهر:", counters['added']),
+        ("عوائل تم نقلها أو حذفها هذا الشهر:", counters['deleted']),
     ]
     
     for text, val in stats_data:
@@ -199,23 +198,23 @@ def create_word_stats_report(counters, filename_base):
 # -----------------------------------------------------------------------------
 col1, col2 = st.columns(2)
 with col1:
-    st.markdown("<h3 style='text-align: right;'>📂 الملف الأول</h3>", unsafe_allow_html=True)
-    file1 = st.file_uploader("ارفع الملف الأول", type=['docx'], key="f1", label_visibility="collapsed")
+    st.markdown("<h3 style='text-align: right;'>📂 ملف الشهر الجديد (الحالي)</h3>", unsafe_allow_html=True)
+    new_file = st.file_uploader("ارفع الملف الجديد", type=['docx'], key="new", label_visibility="collapsed")
 
 with col2:
-    st.markdown("<h3 style='text-align: right;'>📂 الملف الثاني</h3>", unsafe_allow_html=True)
-    file2 = st.file_uploader("ارفع الملف الثاني", type=['docx'], key="f2", label_visibility="collapsed")
+    st.markdown("<h3 style='text-align: right;'>📂 ملف الشهر القديم (السابق)</h3>", unsafe_allow_html=True)
+    old_file = st.file_uploader("ارفع الملف القديم", type=['docx'], key="old", label_visibility="collapsed")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-if st.button("بدء المقارنة الشاملة"):
-    if file1 and file2:
-        with st.spinner('جاري إجراء المقارنة الشاملة وتجهيز ملفات الوورد...'):
+if st.button("بدء المقارنة الدقيقة واستخراج المتغيرات"):
+    if old_file and new_file:
+        with st.spinner('جاري قراءة الملفات ومطابقة القيود...'):
             try:
-                data1 = extract_clean_records(file1)
-                data2 = extract_clean_records(file2)
+                old_data = extract_clean_records(old_file)
+                new_data = extract_clean_records(new_file)
                 
-                results, counters = compare_symmetric(data1, data2)
+                results, counters = compare_records(old_data, new_data)
                 
                 if results:
                     results = sorted(results, key=lambda x: str(x.get("اسم رب الأسرة", "")))
@@ -229,19 +228,19 @@ if st.button("بدء المقارنة الشاملة"):
                     with c1: st.markdown(f"<div class='report-box'>محجوبين<br><h2>{counters['withheld']}</h2></div>", unsafe_allow_html=True)
                     with c2: st.markdown(f"<div class='report-box'>مستحقة<br><h2>{counters['eligible']}</h2></div>", unsafe_allow_html=True)
                     with c3: st.markdown(f"<div class='report-box'>الكلية<br><h2>{counters['total']}</h2></div>", unsafe_allow_html=True)
-                    with c4: st.markdown(f"<div class='report-box'>إضافات/حذوفات<br><h2>{counters['only_in_1'] + counters['only_in_2']}</h2></div>", unsafe_allow_html=True)
+                    with c4: st.markdown(f"<div class='report-box'>إضافات/حذوفات<br><h2>{counters['added'] + counters['deleted']}</h2></div>", unsafe_allow_html=True)
                     
-                    # استخراج اسم الملف الأساسي بدون الامتداد
-                    base_name = file1.name.rsplit('.', 1)[0]
+                    # استخراج اسم الملف الجديد ليكون اسم تقرير المتغيرات
+                    base_name = new_file.name.rsplit('.', 1)[0]
                     
                     # توليد أزرار التحميل
                     col_dl1, col_dl2 = st.columns(2)
                     with col_dl1:
-                        word_report = create_word_table_report(df_results, f"المتغيرات - {base_name}")
+                        word_report = create_word_table_report(df_results, f"متغيرات شهر - {base_name}")
                         st.download_button(
                             label="📥 تحميل جدول المتغيرات (Word)",
                             data=word_report,
-                            file_name=f"{base_name}.docx",
+                            file_name=f"متغيرات_{base_name}.docx",
                             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                         )
                     with col_dl2:
@@ -249,12 +248,12 @@ if st.button("بدء المقارنة الشاملة"):
                         st.download_button(
                             label="📊 تحميل تقرير الإحصاء (Word)",
                             data=word_stats,
-                            file_name=f"{base_name} - احصاء.docx",
+                            file_name=f"احصاء_{base_name}.docx",
                             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                         )
                 else:
-                    st.success("🎉 الملفان متطابقان تماماً! لا توجد أي إضافات، حذوفات، أو تغييرات في الحقول.")
+                    st.success("🎉 الملفان متطابقان تماماً! لا توجد أي إضافات، حذوفات، أو تغييرات في الحقول هذا الشهر.")
             except Exception as e:
                 st.error(f"خطأ غير متوقع أثناء المعالجة: {e}")
     else:
-        st.warning("يرجى رفع كلا الملفين أولاً.")
+        st.warning("يرجى رفع كلا الملفين (القديم والجديد) أولاً.")
