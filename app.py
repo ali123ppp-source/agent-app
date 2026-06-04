@@ -12,7 +12,9 @@ st.markdown("""
     th, td { text-align: right !important; dir: rtl !important; }
     div.stButton > button { background-color: #2C3E50; color: white; width: 100%; font-weight: bold; border-radius: 8px;}
     .report-box { background-color: #ECF0F1; padding: 15px; border-radius: 8px; border-right: 5px solid #2C3E50; text-align: right; margin-bottom: 10px;}
-    .net-diff { font-size: 18px; font-weight: bold; margin-top: 5px; color: #D35400; }
+    .net-diff { font-size: 16px; font-weight: bold; margin-top: 5px; color: #2C3E50; border-top: 1px solid #BDC3C7; padding-top: 5px;}
+    .stat-inc { font-size: 14px; color: #27AE60; font-weight: bold; }
+    .stat-dec { font-size: 14px; color: #C0392B; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -69,14 +71,16 @@ def extract_clean_records(file_obj):
     return records
 
 # -----------------------------------------------------------------------------
-# محرك المقارنة (القديم مقابل الجديد)
+# محرك المقارنة (القديم مقابل الجديد مع الفصل الدقيق للزيادة والنقصان)
 # -----------------------------------------------------------------------------
 def compare_records(old_data, new_data):
     results = []
     counters = {
         "name_fam": 0, "total_fam": 0, "eligible_fam": 0, "withheld_fam": 0, 
         "added_fam": 0, "deleted_fam": 0,
-        "net_total": 0, "net_eligible": 0, "net_withheld": 0
+        "inc_total": 0, "dec_total": 0, "net_total": 0,
+        "inc_eligible": 0, "dec_eligible": 0, "net_eligible": 0,
+        "inc_withheld": 0, "dec_withheld": 0, "net_withheld": 0
     }
     
     all_cards = set(old_data.keys()).union(set(new_data.keys()))
@@ -95,13 +99,24 @@ def compare_records(old_data, new_data):
                 if diff_name: counters["name_fam"] += 1
                 if diff_total: 
                     counters["total_fam"] += 1
-                    counters["net_total"] += (new_v["total"] - old_v["total"])
+                    diff = new_v["total"] - old_v["total"]
+                    counters["net_total"] += diff
+                    if diff > 0: counters["inc_total"] += diff
+                    else: counters["dec_total"] += abs(diff)
+                    
                 if diff_elig: 
                     counters["eligible_fam"] += 1
-                    counters["net_eligible"] += (new_v["eligible"] - old_v["eligible"])
+                    diff = new_v["eligible"] - old_v["eligible"]
+                    counters["net_eligible"] += diff
+                    if diff > 0: counters["inc_eligible"] += diff
+                    else: counters["dec_eligible"] += abs(diff)
+                    
                 if diff_with: 
                     counters["withheld_fam"] += 1
-                    counters["net_withheld"] += (new_v["withheld"] - old_v["withheld"])
+                    diff = new_v["withheld"] - old_v["withheld"]
+                    counters["net_withheld"] += diff
+                    if diff > 0: counters["inc_withheld"] += diff
+                    else: counters["dec_withheld"] += abs(diff)
                 
                 results.append({
                     "التسلسل": new_v["seq"],
@@ -116,8 +131,14 @@ def compare_records(old_data, new_data):
         elif card in old_data and card not in new_data:
             old_v = old_data[card]
             counters["deleted_fam"] += 1
+            
+            counters["dec_total"] += old_v["total"]
             counters["net_total"] -= old_v["total"]
+            
+            counters["dec_eligible"] += old_v["eligible"]
             counters["net_eligible"] -= old_v["eligible"]
+            
+            counters["dec_withheld"] += old_v["withheld"]
             counters["net_withheld"] -= old_v["withheld"]
             
             results.append({
@@ -133,8 +154,14 @@ def compare_records(old_data, new_data):
         elif card not in old_data and card in new_data:
             new_v = new_data[card]
             counters["added_fam"] += 1
+            
+            counters["inc_total"] += new_v["total"]
             counters["net_total"] += new_v["total"]
+            
+            counters["inc_eligible"] += new_v["eligible"]
             counters["net_eligible"] += new_v["eligible"]
+            
+            counters["inc_withheld"] += new_v["withheld"]
             counters["net_withheld"] += new_v["withheld"]
             
             results.append({
@@ -179,21 +206,32 @@ def create_word_table_report(df, title):
 
 def create_word_stats_report(counters, filename_base):
     doc = Document()
-    heading = doc.add_heading(f"تقرير الإحصاء الشامل لشهر - {filename_base}", level=1)
+    heading = doc.add_heading(f"تقرير الإحصاء الشامل والدقيق لشهر - {filename_base}", level=1)
     heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_paragraph().add_run().add_break()
     
-    # القسم الأول: إحصاء الأفراد الرياضي الدقيق
+    # القسم الأول: إحصاء الأفراد الرياضي الدقيق (تفصيلي)
     p_title1 = doc.add_paragraph()
     p_title1.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    p_title1.add_run("أولاً: إحصاء صافي الأفراد (حسابي)").bold = True
+    p_title1.add_run("أولاً: إحصاء حركة الأفراد (مطابق لتقارير الوزارة)").bold = True
     
     stats_individuals = [
+        ("إجمالي زيادة الأفراد الكلية (المضافين):", f"+{counters['inc_total']}"),
+        ("إجمالي نقصان الأفراد الكلية (المحذوفين):", f"-{counters['dec_total']}"),
         ("صافي التغيير في الأفراد الكلية:", f"{counters['net_total']:+d}"),
+        ("---", ""),
+        ("إجمالي زيادة الأفراد المستحقة:", f"+{counters['inc_eligible']}"),
+        ("إجمالي نقصان الأفراد المستحقة:", f"-{counters['dec_eligible']}"),
         ("صافي التغيير في الأفراد المستحقة:", f"{counters['net_eligible']:+d}"),
+        ("---", ""),
+        ("إجمالي زيادة الأفراد المحجوبين:", f"+{counters['inc_withheld']}"),
+        ("إجمالي نقصان الأفراد المحجوبين:", f"-{counters['dec_withheld']}"),
         ("صافي التغيير في الأفراد المحجوبين:", f"{counters['net_withheld']:+d}")
     ]
     for text, val in stats_individuals:
+        if text == "---":
+            doc.add_paragraph()
+            continue
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         p.add_run(f" {val} ").bold = True
@@ -255,13 +293,40 @@ if st.button("بدء المقارنة الدقيقة واستخراج المتغ
                     st.markdown("<h3 style='text-align: right; color: #2C3E50;'>📋 جدول المتغيرات</h3>", unsafe_allow_html=True)
                     st.dataframe(df_results, use_container_width=True, hide_index=True)
                     
-                    st.markdown("<h3 style='text-align: right; margin-top: 20px;'>📊 إحصائية الفروقات (عوائل وأفراد)</h3>", unsafe_allow_html=True)
+                    st.markdown("<h3 style='text-align: right; margin-top: 20px;'>📊 إحصائية الفروقات (مطابقة للتقارير الرسمية)</h3>", unsafe_allow_html=True)
                     c1, c2, c3, c4 = st.columns(4)
                     
-                    with c1: st.markdown(f"<div class='report-box'>حركة المحجوبين<br><h2>{counters['withheld_fam']} عائلة</h2><div class='net-diff'>صافي الأفراد: {counters['net_withheld']:+d}</div></div>", unsafe_allow_html=True)
-                    with c2: st.markdown(f"<div class='report-box'>حركة المستحقة<br><h2>{counters['eligible_fam']} عائلة</h2><div class='net-diff'>صافي الأفراد: {counters['net_eligible']:+d}</div></div>", unsafe_allow_html=True)
-                    with c3: st.markdown(f"<div class='report-box'>حركة الكلية<br><h2>{counters['total_fam']} عائلة</h2><div class='net-diff'>صافي الأفراد: {counters['net_total']:+d}</div></div>", unsafe_allow_html=True)
-                    with c4: st.markdown(f"<div class='report-box'>إضافة / حذف<br><h2>{counters['added_fam'] + counters['deleted_fam']} عائلة</h2><div class='net-diff'>حركة السجلات</div></div>", unsafe_allow_html=True)
+                    with c1: 
+                        st.markdown(f"""<div class='report-box'>
+                            حركة الكلية<br><h2>{counters['total_fam']} عائلة</h2>
+                            <div class='stat-inc'>زيادة مضافة: +{counters['inc_total']} فرد</div>
+                            <div class='stat-dec'>نقصان محذوف: -{counters['dec_total']} فرد</div>
+                            <div class='net-diff'>الصافي النهائي: {counters['net_total']:+d}</div>
+                        </div>""", unsafe_allow_html=True)
+                        
+                    with c2: 
+                        st.markdown(f"""<div class='report-box'>
+                            حركة المستحقة<br><h2>{counters['eligible_fam']} عائلة</h2>
+                            <div class='stat-inc'>زيادة مضافة: +{counters['inc_eligible']} فرد</div>
+                            <div class='stat-dec'>نقصان محذوف: -{counters['dec_eligible']} فرد</div>
+                            <div class='net-diff'>الصافي النهائي: {counters['net_eligible']:+d}</div>
+                        </div>""", unsafe_allow_html=True)
+                        
+                    with c3: 
+                        st.markdown(f"""<div class='report-box'>
+                            حركة المحجوبين<br><h2>{counters['withheld_fam']} عائلة</h2>
+                            <div class='stat-inc'>زيادة مضافة: +{counters['inc_withheld']} فرد</div>
+                            <div class='stat-dec'>نقصان محذوف: -{counters['dec_withheld']} فرد</div>
+                            <div class='net-diff'>الصافي النهائي: {counters['net_withheld']:+d}</div>
+                        </div>""", unsafe_allow_html=True)
+                        
+                    with c4: 
+                        st.markdown(f"""<div class='report-box'>
+                            إضافة / حذف عوائل<br><h2>{counters['added_fam'] + counters['deleted_fam']} عائلة</h2>
+                            <div class='stat-inc'>عوائل مضافة: +{counters['added_fam']}</div>
+                            <div class='stat-dec'>عوائل محذوفة: -{counters['deleted_fam']}</div>
+                            <div class='net-diff'>حركة السجلات</div>
+                        </div>""", unsafe_allow_html=True)
                     
                     base_name = new_file.name.rsplit('.', 1)[0]
                     col_dl1, col_dl2 = st.columns(2)
