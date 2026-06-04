@@ -12,11 +12,12 @@ st.markdown("""
     th, td { text-align: right !important; dir: rtl !important; }
     div.stButton > button { background-color: #2C3E50; color: white; width: 100%; font-weight: bold; border-radius: 8px;}
     .report-box { background-color: #ECF0F1; padding: 15px; border-radius: 8px; border-right: 5px solid #2C3E50; text-align: right; margin-bottom: 10px;}
+    .net-diff { font-size: 18px; font-weight: bold; margin-top: 5px; color: #D35400; }
     </style>
 """, unsafe_allow_html=True)
 
 st.markdown("<h1 style='text-align: right;'>نظام المقارنة الشامل والذكي 📄🔎</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: right;'>يقوم بمقارنة ملف الشهر الجديد بناءً على ملف الشهر القديم لاستخراج المتغيرات الدقيقة.</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: right;'>يقوم بمقارنة ملف الشهر الجديد بناءً على ملف الشهر القديم لاستخراج المتغيرات الدقيقة للعوائل والأفراد.</p>", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
 # محرك الاستخراج الدقيق
@@ -29,11 +30,9 @@ def extract_clean_records(file_obj):
         for row in table.rows:
             cells = [cell.text.strip().replace('\n', ' ') for cell in row.cells]
             
-            # تخطي أسطر العناوين
             if not any(cells) or "المركز" in "".join(cells) or "الوكيل" in "".join(cells) or "اسم رب" in "".join(cells):
                 continue
             
-            # تحديد حقل الاسم
             name_idx = -1
             max_len = 0
             for i, c in enumerate(cells):
@@ -44,20 +43,17 @@ def extract_clean_records(file_obj):
             
             if name_idx == -1: continue
             
-            # تحديد أرقام البطاقات (أرقام تتجاوز 5 خانات)
             card_indices = [i for i, c in enumerate(cells) if c.isdigit() and len(c) >= 5]
             if not card_indices: continue
             
             card_num = cells[card_indices[1]] if len(card_indices) >= 2 else cells[card_indices[0]]
                 
-            # التقاط التسلسل
             seq = "-"
             for i in range(len(cells)-1, card_indices[-1], -1):
                 if cells[i].isdigit():
                     seq = cells[i]
                     break
             
-            # الحقول الحسابية
             digit_cells = [int(cells[i]) for i in range(name_idx) if cells[i].isdigit()]
             if len(digit_cells) >= 3:
                 withheld, eligible, total = digit_cells[0], digit_cells[1], digit_cells[2]
@@ -77,7 +73,11 @@ def extract_clean_records(file_obj):
 # -----------------------------------------------------------------------------
 def compare_records(old_data, new_data):
     results = []
-    counters = {"name": 0, "total": 0, "eligible": 0, "withheld": 0, "added": 0, "deleted": 0}
+    counters = {
+        "name_fam": 0, "total_fam": 0, "eligible_fam": 0, "withheld_fam": 0, 
+        "added_fam": 0, "deleted_fam": 0,
+        "net_total": 0, "net_eligible": 0, "net_withheld": 0
+    }
     
     all_cards = set(old_data.keys()).union(set(new_data.keys()))
     
@@ -92,10 +92,16 @@ def compare_records(old_data, new_data):
             diff_with = old_v["withheld"] != new_v["withheld"]
             
             if diff_name or diff_total or diff_elig or diff_with:
-                if diff_name: counters["name"] += 1
-                if diff_total: counters["total"] += 1
-                if diff_elig: counters["eligible"] += 1
-                if diff_with: counters["withheld"] += 1
+                if diff_name: counters["name_fam"] += 1
+                if diff_total: 
+                    counters["total_fam"] += 1
+                    counters["net_total"] += (new_v["total"] - old_v["total"])
+                if diff_elig: 
+                    counters["eligible_fam"] += 1
+                    counters["net_eligible"] += (new_v["eligible"] - old_v["eligible"])
+                if diff_with: 
+                    counters["withheld_fam"] += 1
+                    counters["net_withheld"] += (new_v["withheld"] - old_v["withheld"])
                 
                 results.append({
                     "التسلسل": new_v["seq"],
@@ -109,7 +115,11 @@ def compare_records(old_data, new_data):
         # موجود في القديم ومفقود في الجديد (محذوف / منقول)
         elif card in old_data and card not in new_data:
             old_v = old_data[card]
-            counters["deleted"] += 1
+            counters["deleted_fam"] += 1
+            counters["net_total"] -= old_v["total"]
+            counters["net_eligible"] -= old_v["eligible"]
+            counters["net_withheld"] -= old_v["withheld"]
+            
             results.append({
                 "التسلسل": old_v["seq"],
                 "رقم البطاقة": card,
@@ -122,7 +132,11 @@ def compare_records(old_data, new_data):
         # غير موجود في القديم وموجود في الجديد (مضاف حديثاً)
         elif card not in old_data and card in new_data:
             new_v = new_data[card]
-            counters["added"] += 1
+            counters["added_fam"] += 1
+            counters["net_total"] += new_v["total"]
+            counters["net_eligible"] += new_v["eligible"]
+            counters["net_withheld"] += new_v["withheld"]
+            
             results.append({
                 "التسلسل": new_v["seq"],
                 "رقم البطاقة": card,
@@ -141,20 +155,17 @@ def create_word_table_report(df, title):
     doc = Document()
     heading = doc.add_heading(title, level=1)
     heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    
-    cols = list(df.columns)[::-1] # عكس الترتيب ليتوافق مع اليمين لليسار في وورد
+    cols = list(df.columns)[::-1]
     
     table = doc.add_table(rows=1, cols=len(cols))
     table.style = 'Table Grid'
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     
-    # إضافة العناوين
     hdr_cells = table.rows[0].cells
     for i, col in enumerate(cols):
         hdr_cells[i].text = str(col)
         hdr_cells[i].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
         
-    # إضافة البيانات
     for _, row in df.iterrows():
         row_cells = table.add_row().cells
         for i, col in enumerate(cols):
@@ -168,24 +179,45 @@ def create_word_table_report(df, title):
 
 def create_word_stats_report(counters, filename_base):
     doc = Document()
-    heading = doc.add_heading(f"تقرير إحصاء المتغيرات لشهر - {filename_base}", level=1)
+    heading = doc.add_heading(f"تقرير الإحصاء الشامل لشهر - {filename_base}", level=1)
     heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    
     doc.add_paragraph().add_run().add_break()
     
-    stats_data = [
-        ("عدد التغييرات في الأفراد الكلية:", counters['total']),
-        ("عدد التغييرات في الأفراد المستحقة:", counters['eligible']),
-        ("عدد التغييرات في الأفراد المحجوبين:", counters['withheld']),
-        ("عدد التغييرات في أسماء أرباب الأسر:", counters['name']),
-        ("عوائل تم إضافتها حديثاً في هذا الشهر:", counters['added']),
-        ("عوائل تم نقلها أو حذفها هذا الشهر:", counters['deleted']),
-    ]
+    # القسم الأول: إحصاء الأفراد الرياضي الدقيق
+    p_title1 = doc.add_paragraph()
+    p_title1.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    p_title1.add_run("أولاً: إحصاء صافي الأفراد (حسابي)").bold = True
     
-    for text, val in stats_data:
+    stats_individuals = [
+        ("صافي التغيير في الأفراد الكلية:", f"{counters['net_total']:+d}"),
+        ("صافي التغيير في الأفراد المستحقة:", f"{counters['net_eligible']:+d}"),
+        ("صافي التغيير في الأفراد المحجوبين:", f"{counters['net_withheld']:+d}")
+    ]
+    for text, val in stats_individuals:
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        p.add_run(f"{val}").bold = True
+        p.add_run(f" {val} ").bold = True
+        p.add_run(f" : {text}")
+        
+    doc.add_paragraph().add_run().add_break()
+    
+    # القسم الثاني: إحصاء العوائل الإداري
+    p_title2 = doc.add_paragraph()
+    p_title2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    p_title2.add_run("ثانياً: إحصاء القيود والعوائل (إداري)").bold = True
+    
+    stats_families = [
+        ("عوائل تغيرت أعداد أفرادها الكلية:", counters['total_fam']),
+        ("عوائل تغيرت أعداد أفرادها المستحقة:", counters['eligible_fam']),
+        ("عوائل تغيرت أعداد أفرادها المحجوبين:", counters['withheld_fam']),
+        ("عوائل طرأ تغيير إملائي على اسم رب الأسرة:", counters['name_fam']),
+        ("عوائل جديدة تمت إضافتها بالكامل:", counters['added_fam']),
+        ("عوائل تم نقلها أو حذفها بالكامل:", counters['deleted_fam'])
+    ]
+    for text, val in stats_families:
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        p.add_run(f" {val} ").bold = True
         p.add_run(f" : {text}")
         
     buffer = BytesIO()
@@ -209,7 +241,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 
 if st.button("بدء المقارنة الدقيقة واستخراج المتغيرات"):
     if old_file and new_file:
-        with st.spinner('جاري قراءة الملفات ومطابقة القيود...'):
+        with st.spinner('جاري قراءة الملفات ومطابقة القيود وإجراء الحسابات...'):
             try:
                 old_data = extract_clean_records(old_file)
                 new_data = extract_clean_records(new_file)
@@ -223,17 +255,15 @@ if st.button("بدء المقارنة الدقيقة واستخراج المتغ
                     st.markdown("<h3 style='text-align: right; color: #2C3E50;'>📋 جدول المتغيرات</h3>", unsafe_allow_html=True)
                     st.dataframe(df_results, use_container_width=True, hide_index=True)
                     
-                    st.markdown("<h3 style='text-align: right; margin-top: 20px;'>📊 إحصائية الفروقات</h3>", unsafe_allow_html=True)
+                    st.markdown("<h3 style='text-align: right; margin-top: 20px;'>📊 إحصائية الفروقات (عوائل وأفراد)</h3>", unsafe_allow_html=True)
                     c1, c2, c3, c4 = st.columns(4)
-                    with c1: st.markdown(f"<div class='report-box'>محجوبين<br><h2>{counters['withheld']}</h2></div>", unsafe_allow_html=True)
-                    with c2: st.markdown(f"<div class='report-box'>مستحقة<br><h2>{counters['eligible']}</h2></div>", unsafe_allow_html=True)
-                    with c3: st.markdown(f"<div class='report-box'>الكلية<br><h2>{counters['total']}</h2></div>", unsafe_allow_html=True)
-                    with c4: st.markdown(f"<div class='report-box'>إضافات/حذوفات<br><h2>{counters['added'] + counters['deleted']}</h2></div>", unsafe_allow_html=True)
                     
-                    # استخراج اسم الملف الجديد ليكون اسم تقرير المتغيرات
+                    with c1: st.markdown(f"<div class='report-box'>حركة المحجوبين<br><h2>{counters['withheld_fam']} عائلة</h2><div class='net-diff'>صافي الأفراد: {counters['net_withheld']:+d}</div></div>", unsafe_allow_html=True)
+                    with c2: st.markdown(f"<div class='report-box'>حركة المستحقة<br><h2>{counters['eligible_fam']} عائلة</h2><div class='net-diff'>صافي الأفراد: {counters['net_eligible']:+d}</div></div>", unsafe_allow_html=True)
+                    with c3: st.markdown(f"<div class='report-box'>حركة الكلية<br><h2>{counters['total_fam']} عائلة</h2><div class='net-diff'>صافي الأفراد: {counters['net_total']:+d}</div></div>", unsafe_allow_html=True)
+                    with c4: st.markdown(f"<div class='report-box'>إضافة / حذف<br><h2>{counters['added_fam'] + counters['deleted_fam']} عائلة</h2><div class='net-diff'>حركة السجلات</div></div>", unsafe_allow_html=True)
+                    
                     base_name = new_file.name.rsplit('.', 1)[0]
-                    
-                    # توليد أزرار التحميل
                     col_dl1, col_dl2 = st.columns(2)
                     with col_dl1:
                         word_report = create_word_table_report(df_results, f"متغيرات شهر - {base_name}")
@@ -246,7 +276,7 @@ if st.button("بدء المقارنة الدقيقة واستخراج المتغ
                     with col_dl2:
                         word_stats = create_word_stats_report(counters, base_name)
                         st.download_button(
-                            label="📊 تحميل تقرير الإحصاء (Word)",
+                            label="📊 تحميل تقرير الإحصاء الشامل (Word)",
                             data=word_stats,
                             file_name=f"احصاء_{base_name}.docx",
                             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
