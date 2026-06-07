@@ -6,7 +6,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
 
 # إعدادات الواجهة
-st.set_page_config(page_title="نظام المقارنة الشامل للوكلاء", layout="wide")
+st.set_page_config(page_title="نظام المقارنة المطور للوكلاء", layout="wide")
 st.markdown("""
     <style>
     th, td { text-align: right !important; dir: rtl !important; }
@@ -18,8 +18,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align: right;'>نظام المقارنة الشامل والذكي 📄🔎</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: right;'>يقوم بمقارنة ملف الشهر الجديد بناءً على ملف الشهر القديم لاستخراج المتغيرات الرقمية الدقيقة للعوائل والأفراد.</p>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: right;'>نظام المقارنة الشامل والذكي (نسخة كشف الفروقات المقارنة) 📄🔎</h1>", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
 # محرك الاستخراج الدقيق
@@ -71,7 +70,7 @@ def extract_clean_records(file_obj):
     return records
 
 # -----------------------------------------------------------------------------
-# محرك المقارنة الرقمية (تم إلغاء مقارنة الأسماء بناءً على طلبك)
+# محرك المقارنة الثنائي (يكشف القيم السابقة والحالية)
 # -----------------------------------------------------------------------------
 def compare_records(old_data, new_data):
     results = []
@@ -86,7 +85,6 @@ def compare_records(old_data, new_data):
     all_cards = set(old_data.keys()).union(set(new_data.keys()))
     
     for card in all_cards:
-        # موجود في كلا الملفين (مقارنة أرقام الأفراد فقط)
         if card in old_data and card in new_data:
             old_v, new_v = old_data[card], new_data[card]
             
@@ -94,6 +92,7 @@ def compare_records(old_data, new_data):
             diff_elig = old_v["eligible"] != new_v["eligible"]
             diff_with = old_v["withheld"] != new_v["withheld"]
             
+            # تم الإبقاء على مقارنة الأرقام فقط، ولكن سنعرض المقارنة الكاملة في الجدول لكشف اللبس
             if diff_total or diff_elig or diff_with:
                 if diff_total: 
                     counters["total_fam"] += 1
@@ -119,56 +118,54 @@ def compare_records(old_data, new_data):
                 results.append({
                     "التسلسل": new_v["seq"],
                     "رقم البطاقة": card,
-                    "اسم رب الأسرة": new_v["name"],
-                    "الأفراد الكلية": new_v["total"],
-                    "الأفراد المستحقة": new_v["eligible"],
-                    "الأفراد المحجوبين": new_v["withheld"]
+                    "الاسم (سابقاً)": old_v["name"],
+                    "الاسم (حالياً)": new_v["name"],
+                    "الكلية (سابقاً)": old_v["total"],
+                    "الكلية (حالياً)": new_v["total"],
+                    "المستحقة (سابقاً)": old_v["eligible"],
+                    "المستحقة (حالياً)": new_v["eligible"],
+                    "المحجوبين (سابقاً)": old_v["withheld"],
+                    "المحجوبين (حالياً)": new_v["withheld"]
                 })
                 
-        # موجود في القديم ومفقود في الجديد (محذوف / منقول)
         elif card in old_data and card not in new_data:
             old_v = old_data[card]
             counters["deleted_fam"] += 1
-            
             counters["dec_total"] += old_v["total"]
             counters["net_total"] -= old_v["total"]
-            
             counters["dec_eligible"] += old_v["eligible"]
             counters["net_eligible"] -= old_v["eligible"]
-            
             counters["dec_withheld"] += old_v["withheld"]
             counters["net_withheld"] -= old_v["withheld"]
             
             results.append({
                 "التسلسل": old_v["seq"],
                 "رقم البطاقة": card,
-                "اسم رب الأسرة": old_v["name"] + " (محذوف / منقول)",
-                "الأفراد الكلية": old_v["total"],
-                "الأفراد المستحقة": old_v["eligible"],
-                "الأفراد المحجوبين": old_v["withheld"]
+                "الاسم (سابقاً)": old_v["name"],
+                "الاسم (حالياً)": "❌ (محذوف / منقول)",
+                "الكلية (سابقاً)": old_v["total"], "الكلية (حالياً)": 0,
+                "المستحقة (سابقاً)": old_v["eligible"], "المستحقة (حالياً)": 0,
+                "المحجوبين (سابقاً)": old_v["withheld"], "المحجوبين (حالياً)": 0
             })
             
-        # غير موجود في القديم وموجود في الجديد (مضاف حديثاً)
         elif card not in old_data and card in new_data:
             new_v = new_data[card]
             counters["added_fam"] += 1
-            
             counters["inc_total"] += new_v["total"]
             counters["net_total"] += new_v["total"]
-            
             counters["inc_eligible"] += new_v["eligible"]
             counters["net_eligible"] += new_v["eligible"]
-            
             counters["inc_withheld"] += new_v["withheld"]
             counters["net_withheld"] += new_v["withheld"]
             
             results.append({
                 "التسلسل": new_v["seq"],
                 "رقم البطاقة": card,
-                "اسم رب الأسرة": new_v["name"] + " (مضاف حديثاً)",
-                "الأفراد الكلية": new_v["total"],
-                "الأفراد المستحقة": new_v["eligible"],
-                "الأفراد المحجوبين": new_v["withheld"]
+                "الاسم (سابقاً)": "✨ (مضاف حديثاً)",
+                "الاسم (حالياً)": new_v["name"],
+                "الكلية (سابقاً)": 0, "الكلية (حالياً)": new_v["total"],
+                "المستحقة (سابقاً)": 0, "المستحقة (حالياً)": new_v["eligible"],
+                "المحجوبين (سابقاً)": 0, "المحجوبين (حالياً)": new_v["withheld"]
             })
             
     return results, counters
@@ -204,14 +201,13 @@ def create_word_table_report(df, title):
 
 def create_word_stats_report(counters, filename_base):
     doc = Document()
-    heading = doc.add_heading(f"تقرير الإحصاء الشامل والدقيق لشهر - {filename_base}", level=1)
+    heading = doc.add_heading(f"تقرير الإحصاء لشهر - {filename_base}", level=1)
     heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_paragraph().add_run().add_break()
     
-    # القسم الأول: إحصاء الأفراد الرياضي الدقيق (تفصيلي)
     p_title1 = doc.add_paragraph()
     p_title1.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    p_title1.add_run("أولاً: إحصاء حركة الأفراد (مطابق لتقارير الوزارة)").bold = True
+    p_title1.add_run("أولاً: إحصاء حركة الأفراد").bold = True
     
     stats_individuals = [
         ("إجمالي زيادة الأفراد الكلية (المضافين):", f"+{counters['inc_total']}"),
@@ -220,36 +216,12 @@ def create_word_stats_report(counters, filename_base):
         ("---", ""),
         ("إجمالي زيادة الأفراد المستحقة:", f"+{counters['inc_eligible']}"),
         ("إجمالي نقصان الأفراد المستحقة:", f"-{counters['dec_eligible']}"),
-        ("صافي التغيير في الأفراد المستحقة:", f"{counters['net_eligible']:+d}"),
-        ("---", ""),
-        ("إجمالي زيادة الأفراد المحجوبين:", f"+{counters['inc_withheld']}"),
-        ("إجمالي نقصان الأفراد المحجوبين:", f"-{counters['dec_withheld']}"),
-        ("صافي التغيير في الأفراد المحجوبين:", f"{counters['net_withheld']:+d}")
+        ("صافي التغيير في الأفراد المستحقة:", f"{counters['net_eligible']:+d}")
     ]
     for text, val in stats_individuals:
         if text == "---":
             doc.add_paragraph()
             continue
-        p = doc.add_paragraph()
-        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        p.add_run(f" {val} ").bold = True
-        p.add_run(f" : {text}")
-        
-    doc.add_paragraph().add_run().add_break()
-    
-    # القسم الثاني: إحصاء العوائل الإداري
-    p_title2 = doc.add_paragraph()
-    p_title2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    p_title2.add_run("ثانياً: إحصاء القيود والعوائل (إداري)").bold = True
-    
-    stats_families = [
-        ("عوائل تغيرت أعداد أفرادها الكلية:", counters['total_fam']),
-        ("عوائل تغيرت أعداد أفرادها المستحقة:", counters['eligible_fam']),
-        ("عوائل تغيرت أعداد أفرادها المحجوبين:", counters['withheld_fam']),
-        ("عوائل جديدة تمت إضافتها بالكامل:", counters['added_fam']),
-        ("عوائل تم نقلها أو حذفها بالكامل:", counters['deleted_fam'])
-    ]
-    for text, val in stats_families:
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         p.add_run(f" {val} ").bold = True
@@ -272,11 +244,9 @@ with col2:
     st.markdown("<h3 style='text-align: right;'>📂 ملف الشهر القديم (السابق)</h3>", unsafe_allow_html=True)
     old_file = st.file_uploader("ارفع الملف القديم", type=['docx'], key="old", label_visibility="collapsed")
 
-st.markdown("<br>", unsafe_allow_html=True)
-
 if st.button("بدء المقارنة الدقيقة واستخراج المتغيرات"):
     if old_file and new_file:
-        with st.spinner('جاري قراءة الملفات ومطابقة القيود وإجراء الحسابات...'):
+        with st.spinner('جاري جلب ومطابقة القيود الرقمية...'):
             try:
                 old_data = extract_clean_records(old_file)
                 new_data = extract_clean_records(new_file)
@@ -284,68 +254,32 @@ if st.button("بدء المقارنة الدقيقة واستخراج المتغ
                 results, counters = compare_records(old_data, new_data)
                 
                 if results:
-                    results = sorted(results, key=lambda x: str(x.get("اسم رب الأسرة", "")))
-                    df_results = pd.DataFrame(results)[["التسلسل", "رقم البطاقة", "اسم رب الأسرة", "الأفراد الكلية", "الأفراد المستحقة", "الأفراد المحجوبين"]]
+                    # ترتيب النتائج
+                    results = sorted(results, key=lambda x: str(x.get("الاسم (حالياً)", "")))
+                    df_results = pd.DataFrame(results)[["التسلسل", "رقم البطاقة", "الاسم (سابقاً)", "الاسم (حالياً)", "الكلية (سابقاً)", "الكلية (حالياً)", "المستحقة (سابقاً)", "المستحقة (حالياً)", "المحجوبين (سابقاً)", "المحجوبين (حالياً)"]]
                     
-                    st.markdown("<h3 style='text-align: right; color: #2C3E50;'>📋 جدول المتغيرات</h3>", unsafe_allow_html=True)
+                    st.markdown("<h3 style='text-align: right; color: #2C3E50;'>📋 جدول المتغيرات المقارن</h3>", unsafe_allow_html=True)
                     st.dataframe(df_results, use_container_width=True, hide_index=True)
                     
-                    st.markdown("<h3 style='text-align: right; margin-top: 20px;'>📊 إحصائية الفروقات (مطابقة للتقارير الرسمية)</h3>", unsafe_allow_html=True)
-                    c1, c2, c3, c4 = st.columns(4)
-                    
+                    # صناديق الإحصائيات
+                    st.markdown("<h3 style='text-align: right; margin-top: 20px;'>📊 إحصائية الفروقات</h3>", unsafe_allow_html=True)
+                    c1, c2, c3 = st.columns(3)
                     with c1: 
-                        st.markdown(f"""<div class='report-box'>
-                            حركة الكلية<br><h2>{counters['total_fam']} عائلة</h2>
-                            <div class='stat-inc'>زيادة مضافة: +{counters['inc_total']} فرد</div>
-                            <div class='stat-dec'>نقصان محذوف: -{counters['dec_total']} فرد</div>
-                            <div class='net-diff'>الصافي النهائي: {counters['net_total']:+d}</div>
-                        </div>""", unsafe_allow_html=True)
-                        
+                        st.markdown(f"<div class='report-box'>حركة الكلية<br><h2>{counters['total_fam']} عائلة</h2>الصافي النهائي: {counters['net_total']:+d}</div>", unsafe_allow_html=True)
                     with c2: 
-                        st.markdown(f"""<div class='report-box'>
-                            حركة المستحقة<br><h2>{counters['eligible_fam']} عائلة</h2>
-                            <div class='stat-inc'>زيادة مضافة: +{counters['inc_eligible']} فرد</div>
-                            <div class='stat-dec'>نقصان محذوف: -{counters['dec_eligible']} فرد</div>
-                            <div class='net-diff'>الصافي النهائي: {counters['net_eligible']:+d}</div>
-                        </div>""", unsafe_allow_html=True)
-                        
+                        st.markdown(f"<div class='report-box'>حركة المستحقة<br><h2>{counters['eligible_fam']} عائلة</h2>الصافي النهائي: {counters['net_eligible']:+d}</div>", unsafe_allow_html=True)
                     with c3: 
-                        st.markdown(f"""<div class='report-box'>
-                            حركة المحجوبين<br><h2>{counters['withheld_fam']} عائلة</h2>
-                            <div class='stat-inc'>زيادة مضافة: +{counters['inc_withheld']} فرد</div>
-                            <div class='stat-dec'>نقصان محذوف: -{counters['dec_withheld']} فرد</div>
-                            <div class='net-diff'>الصافي النهائي: {counters['net_withheld']:+d}</div>
-                        </div>""", unsafe_allow_html=True)
-                        
-                    with c4: 
-                        st.markdown(f"""<div class='report-box'>
-                            إضافة / حذف عوائل<br><h2>{counters['added_fam'] + counters['deleted_fam']} عائلة</h2>
-                            <div class='stat-inc'>عوائل مضافة: +{counters['added_fam']}</div>
-                            <div class='stat-dec'>عوائل محذوفة: -{counters['deleted_fam']}</div>
-                            <div class='net-diff'>حركة السجلات</div>
-                        </div>""", unsafe_allow_html=True)
+                        st.markdown(f"<div class='report-box'>عوائل مضافة/محذوفة<br><h2>{counters['added_fam'] + counters['deleted_fam']} عائلة</h2></div>", unsafe_allow_html=True)
                     
                     base_name = new_file.name.rsplit('.', 1)[0]
-                    col_dl1, col_dl2 = st.columns(2)
-                    with col_dl1:
-                        word_report = create_word_table_report(df_results, f"متغيرات شهر - {base_name}")
-                        st.download_button(
-                            label="📥 تحميل جدول المتغيرات (Word)",
-                            data=word_report,
-                            file_name=f"متغيرات_{base_name}.docx",
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        )
-                    with col_dl2:
-                        word_stats = create_word_stats_report(counters, base_name)
-                        st.download_button(
-                            label="📊 تحميل تقرير الإحصاء الشامل (Word)",
-                            data=word_stats,
-                            file_name=f"احصاء_{base_name}.docx",
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        )
+                    word_report = create_word_table_report(df_results, f"متغيرات - {base_name}")
+                    st.download_button(
+                        label="📥 تحميل جدول المتغيرات المطور (Word)",
+                        data=word_report,
+                        file_name=f"متغيرات_{base_name}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    )
                 else:
-                    st.success("🎉 الملفان متطابقان تماماً رقمياً! لا توجد أي تغييرات في أعداد الأفراد هذا الشهر.")
+                    st.success("🎉 الملفان متطابقان تماماً رقمياً!")
             except Exception as e:
-                st.error(f"خطأ غير متوقع أثناء المعالجة: {e}")
-    else:
-        st.warning("يرجى رفع كلا الملفين (القديم والجديد) أولاً.")
+                st.error(f"خطأ: {e}")
