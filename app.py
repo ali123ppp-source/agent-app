@@ -19,7 +19,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("<h1 style='text-align: right;'>نظام المقارنة الشامل والذكي 📄🔎</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: right;'>يقوم بمقارنة ملف الشهر الجديد بناءً على ملف الشهر القديم لاستخراج المتغيرات الدقيقة للعوائل والأفراد.</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: right;'>يقوم بمقارنة ملف الشهر الجديد بناءً على ملف الشهر القديم لاستخراج المتغيرات الرقمية الدقيقة للعوائل والأفراد.</p>", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
 # محرك الاستخراج الدقيق
@@ -71,12 +71,12 @@ def extract_clean_records(file_obj):
     return records
 
 # -----------------------------------------------------------------------------
-# محرك المقارنة (القديم مقابل الجديد مع الفصل الدقيق للزيادة والنقصان)
+# محرك المقارنة الرقمية (تم إلغاء مقارنة الأسماء بناءً على طلبك)
 # -----------------------------------------------------------------------------
 def compare_records(old_data, new_data):
     results = []
     counters = {
-        "name_fam": 0, "total_fam": 0, "eligible_fam": 0, "withheld_fam": 0, 
+        "total_fam": 0, "eligible_fam": 0, "withheld_fam": 0, 
         "added_fam": 0, "deleted_fam": 0,
         "inc_total": 0, "dec_total": 0, "net_total": 0,
         "inc_eligible": 0, "dec_eligible": 0, "net_eligible": 0,
@@ -86,17 +86,15 @@ def compare_records(old_data, new_data):
     all_cards = set(old_data.keys()).union(set(new_data.keys()))
     
     for card in all_cards:
-        # موجود في كلا الملفين (تعديل بيانات)
+        # موجود في كلا الملفين (مقارنة أرقام الأفراد فقط)
         if card in old_data and card in new_data:
             old_v, new_v = old_data[card], new_data[card]
             
-            diff_name = old_v["name"] != new_v["name"]
             diff_total = old_v["total"] != new_v["total"]
             diff_elig = old_v["eligible"] != new_v["eligible"]
             diff_with = old_v["withheld"] != new_v["withheld"]
             
-            if diff_name or diff_total or diff_elig or diff_with:
-                if diff_name: counters["name_fam"] += 1
+            if diff_total or diff_elig or diff_with:
                 if diff_total: 
                     counters["total_fam"] += 1
                     diff = new_v["total"] - old_v["total"]
@@ -248,7 +246,6 @@ def create_word_stats_report(counters, filename_base):
         ("عوائل تغيرت أعداد أفرادها الكلية:", counters['total_fam']),
         ("عوائل تغيرت أعداد أفرادها المستحقة:", counters['eligible_fam']),
         ("عوائل تغيرت أعداد أفرادها المحجوبين:", counters['withheld_fam']),
-        ("عوائل طرأ تغيير إملائي على اسم رب الأسرة:", counters['name_fam']),
         ("عوائل جديدة تمت إضافتها بالكامل:", counters['added_fam']),
         ("عوائل تم نقلها أو حذفها بالكامل:", counters['deleted_fam'])
     ]
@@ -347,7 +344,7 @@ if st.button("بدء المقارنة الدقيقة واستخراج المتغ
                             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                         )
                 else:
-                    st.success("🎉 الملفان متطابقان تماماً! لا توجد أي إضافات، حذوفات، أو تغييرات في الحقول هذا الشهر.")
+                    st.success("🎉 الملفان متطابقان تماماً رقمياً! لا توجد أي تغييرات في أعداد الأفراد هذا الشهر.")
             except Exception as e:
                 st.error(f"خطأ غير متوقع أثناء المعالجة: {e}")
     else:
