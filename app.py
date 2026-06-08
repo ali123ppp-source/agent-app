@@ -2,284 +2,317 @@ import streamlit as st
 import pandas as pd
 from io import BytesIO
 from docx import Document
+from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from collections import defaultdict
+import re
 
-# إعدادات الواجهة
-st.set_page_config(page_title="نظام المقارنة المطور للوكلاء", layout="wide")
+# -----------------------------------------------------------------------------
+# إعدادات الواجهة الرسومية
+# -----------------------------------------------------------------------------
+st.set_page_config(page_title="نظام فرز المناطق المتقدم", layout="wide", page_icon="🏢")
 st.markdown("""
     <style>
     th, td { text-align: right !important; dir: rtl !important; }
-    div.stButton > button { background-color: #2C3E50; color: white; width: 100%; font-weight: bold; border-radius: 8px;}
+    div.stButton > button { background-color: #2C3E50; color: white; width: 100%; font-weight: bold; border-radius: 8px; padding: 10px;}
+    div.stButton > button:hover { background-color: #1A252F; color: #F1C40F;}
     .report-box { background-color: #ECF0F1; padding: 15px; border-radius: 8px; border-right: 5px solid #2C3E50; text-align: right; margin-bottom: 10px;}
-    .net-diff { font-size: 16px; font-weight: bold; margin-top: 5px; color: #2C3E50; border-top: 1px solid #BDC3C7; padding-top: 5px;}
-    .stat-inc { font-size: 14px; color: #27AE60; font-weight: bold; }
-    .stat-dec { font-size: 14px; color: #C0392B; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align: right;'>نظام المقارنة الشامل والذكي (نسخة كشف الفروقات المقارنة) 📄🔎</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: right;'>توزيع المناطق الذكي (تقديم الآباء وعزل النساء) 👨‍👦👩</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: right;'>يقوم النظام بوضع الأب في بداية عائلته، ويعزل أسماء النساء (أرباب الأسر) ليضعهن في نهاية الملفات بشكل مستقل.</p>", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# محرك الاستخراج الدقيق
+# دوال الوورد والتعريب
 # -----------------------------------------------------------------------------
-def extract_clean_records(file_obj):
-    doc = Document(file_obj)
-    records = {}
+def set_cell_direction(cell, direction='btLr'):
+    tc = cell._tc
+    tcPr = tc.get_or_add_tcPr()
+    textDirection = OxmlElement('w:textDirection')
+    textDirection.set(qn('w:val'), direction)
+    tcPr.append(textDirection)
+
+def set_cell_width(cell, width_cm):
+    tc = cell._tc
+    tcPr = tc.get_or_add_tcPr()
+    tcW = OxmlElement('w:tcW')
+    tcW.set(qn('w:w'), str(int(width_cm * 567))) 
+    tcW.set(qn('w:type'), 'dxa')
+    tcPr.append(tcW)
+
+def apply_rtl(doc):
+    for style in doc.styles:
+        if hasattr(style, 'font'): style.font.rtl = True
+
+def preprocess_name(name):
+    name = re.sub(r'\s+', ' ', name.strip())
+    for prefix in ['عبد ', 'ابو ', 'أبو ', 'أم ', 'ام ', 'امة ', 'آل ']:
+        name = name.replace(prefix, prefix.strip() + '_')
+    return name
+
+def is_female(name):
+    """دالة ذكية للتعرف على أسماء النساء"""
+    first_word = name.strip().split()[0]
+    if first_word in ['ام', 'أم', 'امة', 'أمة', 'آمال']: return True
     
-    for table in doc.tables:
+    # استثناءات للذكور تنتهي بتاء مربوطة
+    male_exceptions = ['حمزة', 'اسامة', 'أسامة', 'حذيفة', 'قتادة', 'طلحة', 'خليفة', 'معاوية', 'عطية', 'حارثة', 'عروة', 'عبيدة', 'ميسرة', 'سلامة']
+    if first_word.endswith('ة') and first_word not in male_exceptions:
+        return True
+        
+    female_names = [
+        'زينب', 'مريم', 'شهد', 'نور', 'هدى', 'ندى', 'ليلى', 'سها', 'مها', 'ريم', 'سعاد', 'هند',
+        'ايمان', 'إيمان', 'رحاب', 'سحر', 'سمر', 'كوثر', 'غدير', 'حنان', 'منى', 'اسماء', 'أسماء',
+        'اسراء', 'إسراء', 'شيماء', 'دعاء', 'وفاء', 'رجاء', 'سناء', 'لقاء', 'نجلاء', 'حوراء',
+        'عذراء', 'زهراء', 'بيداء', 'رفل', 'رسل', 'ضحى', 'شمس', 'قمر', 'فرح', 'مرح', 'ابتسام',
+        'إبتسام', 'امال', 'ابتهال', 'انتصار', 'إنتصار', 'انعام', 'أنعام', 'بشرى', 'ذكرى', 'رؤى', 
+        'سرى', 'سروة', 'سهام', 'شروق', 'صبا', 'عواطف', 'فاتن', 'لمياء', 'لينا', 'محاسن', 'مروة', 
+        'نوال', 'هاجر', 'وجدان', 'ياسمين', 'يسرى', 'بنين', 'غفران', 'فردوس', 'افراح', 'أفراح', 
+        'اخلاص', 'إخلاص', 'ازهار', 'أزهار', 'الحان', 'ألحان', 'انوار', 'أنوار', 'اشواق', 'أشواق', 
+        'براء', 'تبارك', 'تغريد', 'جمانة', 'جنان', 'جواهر', 'حلا', 'خلود', 'داليا', 'دلال', 'رغد', 
+        'رنا', 'رنين', 'روان', 'سالي', 'سجى', 'سوزان', 'صابرين', 'عالية', 'عبير', 'عفاف', 'غادة', 
+        'ليال', 'مي', 'ميسون', 'نادية', 'نجاة', 'نغم', 'نهى', 'هديل', 'هناء', 'هيفاء', 'ورود', 
+        'وسن', 'وعد', 'يقين', 'إلهام', 'الهام', 'تهاني', 'سلوى', 'رشا', 'سهير', 'منال', 'آية', 
+        'اية', 'غسق', 'شيرين', 'نسرين', 'جيهان', 'إيناس', 'ايناس', 'رواء'
+    ]
+    if first_word in female_names: return True
+    return False
+
+# -----------------------------------------------------------------------------
+# استخراج ومعالجة الجذور والأبناء
+# -----------------------------------------------------------------------------
+def extract_and_group_data(file_obj):
+    doc_in = Document(file_obj)
+    records = []
+    
+    for table in doc_in.tables:
         for row in table.rows:
             cells = [cell.text.strip().replace('\n', ' ') for cell in row.cells]
+            if not any(cells) or "المركز" in "".join(cells) or "الوكيل" in "".join(cells) or "اسم رب" in "".join(cells): continue
             
-            if not any(cells) or "المركز" in "".join(cells) or "الوكيل" in "".join(cells) or "اسم رب" in "".join(cells):
-                continue
-            
-            name_idx = -1
-            max_len = 0
+            name_idx = -1; max_len = 0
             for i, c in enumerate(cells):
                 if any('\u0600' <= char <= '\u06FF' for char in c) and not any(char.isdigit() for char in c):
-                    if len(c) > max_len:
-                        max_len = len(c)
-                        name_idx = i
-            
+                    if len(c) > max_len: max_len = len(c); name_idx = i
             if name_idx == -1: continue
             
             card_indices = [i for i, c in enumerate(cells) if c.isdigit() and len(c) >= 5]
             if not card_indices: continue
-            
             card_num = cells[card_indices[1]] if len(card_indices) >= 2 else cells[card_indices[0]]
-                
-            seq = "-"
-            for i in range(len(cells)-1, card_indices[-1], -1):
-                if cells[i].isdigit():
-                    seq = cells[i]
-                    break
+            old_card = cells[card_indices[0]] if len(card_indices) >= 2 else ""
+            seq = next((cells[i] for i in range(len(cells)-1, card_indices[-1], -1) if cells[i].isdigit()), "-")
+            digit_cells = [cells[i] for i in range(name_idx) if cells[i].isdigit()]
             
-            digit_cells = [int(cells[i]) for i in range(name_idx) if cells[i].isdigit()]
-            if len(digit_cells) >= 3:
-                withheld, eligible, total = digit_cells[0], digit_cells[1], digit_cells[2]
-            elif len(digit_cells) == 2:
-                withheld, eligible, total = 0, digit_cells[0], digit_cells[1]
-            else:
-                continue
+            if len(digit_cells) >= 3: withheld, eligible, total = digit_cells[0], digit_cells[1], digit_cells[2]
+            elif len(digit_cells) == 2: withheld, eligible, total = "0", digit_cells[0], digit_cells[1]
+            else: withheld, eligible, total = "0", "0", "0"
                 
-            records[card_num] = {
-                "seq": seq, "name": cells[name_idx], "total": total, 
-                "eligible": eligible, "withheld": withheld
-            }
-    return records
+            records.append({
+                'withheld': str(withheld), 'eligible': str(eligible), 'total': str(total),
+                'name': cells[name_idx].strip(), 'old_card': old_card, 'card': card_num, 'seq': seq
+            })
+
+    if not records: return None, None
+
+    # فصل الرجال والنساء
+    male_records = []
+    female_records = []
+    
+    for rec in records:
+        rec['processed_name'] = preprocess_name(rec['name'])
+        rec['is_female'] = is_female(rec['name'])
+        if rec['is_female']:
+            female_records.append(rec)
+        else:
+            words = rec['processed_name'].split()
+            rec['father_string'] = " ".join(words[1:]) if len(words) > 1 else rec['processed_name']
+            male_records.append(rec)
+
+    # 1. معالجة الرجال والآباء
+    male_full_names = {r['processed_name']: r for r in male_records}
+    unique_fathers = list(set(r['father_string'] for r in male_records))
+    
+    family_map = {}
+    for f in unique_fathers:
+        if f in male_full_names: # إذا كان الأب موجود بالأسماء
+            family_map[f] = f
+        else:
+            matches = [other for other in unique_fathers if other.startswith(f + " ") and other != f]
+            family_map[f] = matches[0] if len(matches) == 1 else f
+
+    final_family_map = {}
+    for f in unique_fathers:
+        current = f
+        for _ in range(5):
+            target = family_map.get(current, current)
+            if target == current: break
+            current = target
+        final_family_map[f] = current
+
+    final_family_groups = defaultdict(list)
+    for rec in male_records:
+        if rec['processed_name'] in unique_fathers:
+            assigned_root = final_family_map[rec['processed_name']]
+        else:
+            assigned_root = final_family_map[rec['father_string']]
+        rec['root_id'] = assigned_root
+        final_family_groups[assigned_root].append(rec)
+
+    families_list = []
+    for root, members in final_family_groups.items():
+        # دالة الفرز الداخلية للرجال (تقديم الأب ثم ترتيب الأبناء)
+        def sort_key(m):
+            is_father = 0 if m['processed_name'] == root else 1
+            return (is_father, m['name'])
+            
+        members_sorted = sorted(members, key=sort_key)
+        families_list.append({
+            'root_id': root,
+            'father_display': members_sorted[0]['processed_name'].replace('_', ' '),
+            'leading_name': members_sorted[0]['name'],
+            'size': len(members_sorted),
+            'members': members_sorted,
+            'is_female_group': False
+        })
+
+    # 2. إضافة النساء כقيود مستقلة (لكي يتم عزلها لاحقاً)
+    for rec in female_records:
+        fam_id = 'female_' + str(id(rec))
+        rec['root_id'] = fam_id
+        families_list.append({
+            'root_id': fam_id,
+            'father_display': rec['name'] + ' (نساء)',
+            'leading_name': rec['name'],
+            'size': 1,
+            'members': [rec],
+            'is_female_group': True
+        })
+        
+    return families_list, records
 
 # -----------------------------------------------------------------------------
-# محرك المقارنة الثنائي (يكشف القيم السابقة والحالية)
+# محرك إنشاء ملف Word
 # -----------------------------------------------------------------------------
-def compare_records(old_data, new_data):
-    results = []
-    counters = {
-        "total_fam": 0, "eligible_fam": 0, "withheld_fam": 0, 
-        "added_fam": 0, "deleted_fam": 0,
-        "inc_total": 0, "dec_total": 0, "net_total": 0,
-        "inc_eligible": 0, "dec_eligible": 0, "net_eligible": 0,
-        "inc_withheld": 0, "dec_withheld": 0, "net_withheld": 0
-    }
-    
-    all_cards = set(old_data.keys()).union(set(new_data.keys()))
-    
-    for card in all_cards:
-        if card in old_data and card in new_data:
-            old_v, new_v = old_data[card], new_data[card]
-            
-            diff_total = old_v["total"] != new_v["total"]
-            diff_elig = old_v["eligible"] != new_v["eligible"]
-            diff_with = old_v["withheld"] != new_v["withheld"]
-            
-            # تم الإبقاء على مقارنة الأرقام فقط، ولكن سنعرض المقارنة الكاملة في الجدول لكشف اللبس
-            if diff_total or diff_elig or diff_with:
-                if diff_total: 
-                    counters["total_fam"] += 1
-                    diff = new_v["total"] - old_v["total"]
-                    counters["net_total"] += diff
-                    if diff > 0: counters["inc_total"] += diff
-                    else: counters["dec_total"] += abs(diff)
-                    
-                if diff_elig: 
-                    counters["eligible_fam"] += 1
-                    diff = new_v["eligible"] - old_v["eligible"]
-                    counters["net_eligible"] += diff
-                    if diff > 0: counters["inc_eligible"] += diff
-                    else: counters["dec_eligible"] += abs(diff)
-                    
-                if diff_with: 
-                    counters["withheld_fam"] += 1
-                    diff = new_v["withheld"] - old_v["withheld"]
-                    counters["net_withheld"] += diff
-                    if diff > 0: counters["inc_withheld"] += diff
-                    else: counters["dec_withheld"] += abs(diff)
-                
-                results.append({
-                    "التسلسل": new_v["seq"],
-                    "رقم البطاقة": card,
-                    "الاسم (سابقاً)": old_v["name"],
-                    "الاسم (حالياً)": new_v["name"],
-                    "الكلية (سابقاً)": old_v["total"],
-                    "الكلية (حالياً)": new_v["total"],
-                    "المستحقة (سابقاً)": old_v["eligible"],
-                    "المستحقة (حالياً)": new_v["eligible"],
-                    "المحجوبين (سابقاً)": old_v["withheld"],
-                    "المحجوبين (حالياً)": new_v["withheld"]
-                })
-                
-        elif card in old_data and card not in new_data:
-            old_v = old_data[card]
-            counters["deleted_fam"] += 1
-            counters["dec_total"] += old_v["total"]
-            counters["net_total"] -= old_v["total"]
-            counters["dec_eligible"] += old_v["eligible"]
-            counters["net_eligible"] -= old_v["eligible"]
-            counters["dec_withheld"] += old_v["withheld"]
-            counters["net_withheld"] -= old_v["withheld"]
-            
-            results.append({
-                "التسلسل": old_v["seq"],
-                "رقم البطاقة": card,
-                "الاسم (سابقاً)": old_v["name"],
-                "الاسم (حالياً)": "❌ (محذوف / منقول)",
-                "الكلية (سابقاً)": old_v["total"], "الكلية (حالياً)": 0,
-                "المستحقة (سابقاً)": old_v["eligible"], "المستحقة (حالياً)": 0,
-                "المحجوبين (سابقاً)": old_v["withheld"], "المحجوبين (حالياً)": 0
-            })
-            
-        elif card not in old_data and card in new_data:
-            new_v = new_data[card]
-            counters["added_fam"] += 1
-            counters["inc_total"] += new_v["total"]
-            counters["net_total"] += new_v["total"]
-            counters["inc_eligible"] += new_v["eligible"]
-            counters["net_eligible"] += new_v["eligible"]
-            counters["inc_withheld"] += new_v["withheld"]
-            counters["net_withheld"] += new_v["withheld"]
-            
-            results.append({
-                "التسلسل": new_v["seq"],
-                "رقم البطاقة": card,
-                "الاسم (سابقاً)": "✨ (مضاف حديثاً)",
-                "الاسم (حالياً)": new_v["name"],
-                "الكلية (سابقاً)": 0, "الكلية (حالياً)": new_v["total"],
-                "المستحقة (سابقاً)": 0, "المستحقة (حالياً)": new_v["eligible"],
-                "المحجوبين (سابقاً)": 0, "المحجوبين (حالياً)": new_v["withheld"]
-            })
-            
-    return results, counters
-
-# -----------------------------------------------------------------------------
-# دوال إنشاء ملفات الـ Word
-# -----------------------------------------------------------------------------
-def create_word_table_report(df, title):
-    doc = Document()
-    heading = doc.add_heading(title, level=1)
-    heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    cols = list(df.columns)[::-1]
-    
-    table = doc.add_table(rows=1, cols=len(cols))
+def create_word_file(sorted_records):
+    doc_out = Document()
+    apply_rtl(doc_out)
+    headers = ['ت', 'رقم البطاقة', 'رقم البطاقة القديم', 'اسم رب الاسرة', 'الافراد الكلية', 'الافراد المستحقة', 'الافراد المحجوبين']
+    table = doc_out.add_table(rows=1, cols=7)
     table.style = 'Table Grid'
-    table.alignment = WD_TABLE_ALIGNMENT.CENTER
     
     hdr_cells = table.rows[0].cells
-    for i, col in enumerate(cols):
-        hdr_cells[i].text = str(col)
+    for i, h in enumerate(headers):
+        hdr_cells[i].text = h
         hdr_cells[i].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-        
-    for _, row in df.iterrows():
+        for run in hdr_cells[i].paragraphs[0].runs: run.font.size, run.font.bold, run.font.name = Pt(13), True, 'Arial'
+            
+    set_cell_direction(hdr_cells[4], 'btLr'); set_cell_direction(hdr_cells[5], 'btLr'); set_cell_direction(hdr_cells[6], 'btLr')
+    
+    for idx, rec in enumerate(sorted_records):
         row_cells = table.add_row().cells
-        for i, col in enumerate(cols):
-            row_cells[i].text = str(row[col])
+        row_cells[0].text = str(idx + 1)
+        row_cells[1].text = rec['card']
+        row_cells[2].text = rec['old_card']
+        row_cells[3].text = rec['name']
+        row_cells[4].text = rec['total']
+        row_cells[5].text = rec['eligible']
+        row_cells[6].text = rec['withheld']
+        for i in range(7):
             row_cells[i].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+            for run in row_cells[i].paragraphs[0].runs: run.font.size, run.font.name = Pt(15), 'Arial'
+                
+    widths = [1.2, 3.5, 3.5, 5.0, 0.8, 0.8, 0.8]
+    for row in table.rows:
+        for idx, width in enumerate(widths): set_cell_width(row.cells[idx], width)
             
     buffer = BytesIO()
-    doc.save(buffer)
+    doc_out.save(buffer)
     buffer.seek(0)
     return buffer
 
-def create_word_stats_report(counters, filename_base):
-    doc = Document()
-    heading = doc.add_heading(f"تقرير الإحصاء لشهر - {filename_base}", level=1)
-    heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    doc.add_paragraph().add_run().add_break()
-    
-    p_title1 = doc.add_paragraph()
-    p_title1.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    p_title1.add_run("أولاً: إحصاء حركة الأفراد").bold = True
-    
-    stats_individuals = [
-        ("إجمالي زيادة الأفراد الكلية (المضافين):", f"+{counters['inc_total']}"),
-        ("إجمالي نقصان الأفراد الكلية (المحذوفين):", f"-{counters['dec_total']}"),
-        ("صافي التغيير في الأفراد الكلية:", f"{counters['net_total']:+d}"),
-        ("---", ""),
-        ("إجمالي زيادة الأفراد المستحقة:", f"+{counters['inc_eligible']}"),
-        ("إجمالي نقصان الأفراد المستحقة:", f"-{counters['dec_eligible']}"),
-        ("صافي التغيير في الأفراد المستحقة:", f"{counters['net_eligible']:+d}")
-    ]
-    for text, val in stats_individuals:
-        if text == "---":
-            doc.add_paragraph()
-            continue
-        p = doc.add_paragraph()
-        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        p.add_run(f" {val} ").bold = True
-        p.add_run(f" : {text}")
+# -----------------------------------------------------------------------------
+# الواجهة التفاعلية
+# -----------------------------------------------------------------------------
+st.markdown("<h3 style='text-align: right;'>📂 خطوة 1: رفع ملف البيانات الأصلي</h3>", unsafe_allow_html=True)
+uploaded_file = st.file_uploader("", type=['docx'], label_visibility="collapsed")
+
+if uploaded_file:
+    if 'current_file' not in st.session_state or st.session_state.current_file != uploaded_file.name:
+        families, all_records = extract_and_group_data(uploaded_file)
+        if families:
+            st.session_state.families = families
+            st.session_state.all_records = all_records
+            st.session_state.current_file = uploaded_file.name
+            st.session_state.family_zones = {fam['root_id']: 'المنطقة الأولى' for fam in families}
+            st.session_state.all_names_list = sorted([r['name'] for r in all_records])
+
+    if 'families' in st.session_state:
+        st.markdown("<br><hr>", unsafe_allow_html=True)
+        st.markdown("<h3 style='text-align: right;'>⚡ خطوة 2: لوحة السحب الذكي للإخوة</h3>", unsafe_allow_html=True)
         
-    buffer = BytesIO()
-    doc.save(buffer)
-    buffer.seek(0)
-    return buffer
+        col_name, col_zone, col_action = st.columns([4, 3, 3])
+        
+        with col_name:
+            selected_person = st.selectbox("🔎 اختر أي اسم من العائلة أو اسم الأب:", options=st.session_state.all_names_list)
+            
+        with col_zone:
+            chosen_zone = st.selectbox("🏢 اختر المنطقة المراد نقل إخوته إليها:", options=["المنطقة الأولى", "المنطقة الثانية", "المنطقة الثالثة"])
+            
+        with col_action:
+            st.markdown("<div style='padding-top: 28px;'></div>", unsafe_allow_html=True)
+            if st.button("🚀 سحب وتعيين كل الإخوة"):
+                matched_record = next((r for r in st.session_state.all_records if r['name'] == selected_person), None)
+                if matched_record:
+                    target_root = matched_record['root_id']
+                    
+                    st.session_state.family_zones[target_root] = chosen_zone
+                    bros_count = len([r for r in st.session_state.all_records if r['root_id'] == target_root])
+                    
+                    st.success(f"✅ تم الاعتماد على الجذر .. وتم نقل **{bros_count}** أفراد (الأب والأبناء) إلى {chosen_zone}.")
 
-# -----------------------------------------------------------------------------
-# واجهة الاستخدام
-# -----------------------------------------------------------------------------
-col1, col2 = st.columns(2)
-with col1:
-    st.markdown("<h3 style='text-align: right;'>📂 ملف الشهر الجديد (الحالي)</h3>", unsafe_allow_html=True)
-    new_file = st.file_uploader("ارفع الملف الجديد", type=['docx'], key="new", label_visibility="collapsed")
-
-with col2:
-    st.markdown("<h3 style='text-align: right;'>📂 ملف الشهر القديم (السابق)</h3>", unsafe_allow_html=True)
-    old_file = st.file_uploader("ارفع الملف القديم", type=['docx'], key="old", label_visibility="collapsed")
-
-if st.button("بدء المقارنة الدقيقة واستخراج المتغيرات"):
-    if old_file and new_file:
-        with st.spinner('جاري جلب ومطابقة القيود الرقمية...'):
-            try:
-                old_data = extract_clean_records(old_file)
-                new_data = extract_clean_records(new_file)
+        # ---------------------------------------------------------------------
+        # الإنتاج (حيث يتم عزل النساء في النهاية)
+        # ---------------------------------------------------------------------
+        st.markdown("<br><hr>", unsafe_allow_html=True)
+        if st.button("⚙️ إنتاج وحفظ ملفات الوورد للمناطق الثلاثة"):
+            
+            zone_fams = {"المنطقة الأولى": [], "المنطقة الثانية": [], "المنطقة الثالثة": []}
+            for fam in st.session_state.families:
+                zone_fams[st.session_state.family_zones[fam['root_id']]].append(fam)
+            
+            def finalize_zone(families_in_zone):
+                # فصل الرجال والنساء لضمان وضع النساء في النهاية
+                males = [f for f in families_in_zone if not f['is_female_group']]
+                females = [f for f in families_in_zone if f['is_female_group']]
                 
-                results, counters = compare_records(old_data, new_data)
-                
-                if results:
-                    # ترتيب النتائج
-                    results = sorted(results, key=lambda x: str(x.get("الاسم (حالياً)", "")))
-                    df_results = pd.DataFrame(results)[["التسلسل", "رقم البطاقة", "الاسم (سابقاً)", "الاسم (حالياً)", "الكلية (سابقاً)", "الكلية (حالياً)", "المستحقة (سابقاً)", "المستحقة (حالياً)", "المحجوبين (سابقاً)", "المحجوبين (حالياً)"]]
+                # ترتيب الرجال: أبجدياً حسب اسم القائد وحجم العائلة
+                sorted_males = sorted(males, key=lambda x: (x['leading_name'][0] if x['leading_name'] else 'أ', -x['size'], x['leading_name']))
+                # ترتيب النساء: أبجدياً فقط في أسفل القائمة
+                sorted_females = sorted(females, key=lambda x: x['leading_name'])
+
+                final_list = []
+                for f in sorted_males: final_list.extend(f['members'])
+                for f in sorted_females: final_list.extend(f['members'])
+                return final_list
+
+            z1 = finalize_zone(zone_fams["المنطقة الأولى"])
+            z2 = finalize_zone(zone_fams["المنطقة الثانية"])
+            z3 = finalize_zone(zone_fams["المنطقة الثالثة"])
+            
+            st.markdown("<h3 style='text-align: right;'>📥 خطوة 3: تحميل ملفات المناطق</h3>", unsafe_allow_html=True)
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.markdown(f"<div class='report-box'><div class='stat-title'>المنطقة 1</div><div class='stat-value'>{len(z1)} فرد</div></div>", unsafe_allow_html=True)
+                if z1: st.download_button("📥 تحميل المنطقة 1", data=create_word_file(z1), file_name="المنطقة_1.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
                     
-                    st.markdown("<h3 style='text-align: right; color: #2C3E50;'>📋 جدول المتغيرات المقارن</h3>", unsafe_allow_html=True)
-                    st.dataframe(df_results, use_container_width=True, hide_index=True)
+            with col2:
+                st.markdown(f"<div class='report-box'><div class='stat-title'>المنطقة 2</div><div class='stat-value'>{len(z2)} فرد</div></div>", unsafe_allow_html=True)
+                if z2: st.download_button("📥 تحميل المنطقة 2", data=create_word_file(z2), file_name="المنطقة_2.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
                     
-                    # صناديق الإحصائيات
-                    st.markdown("<h3 style='text-align: right; margin-top: 20px;'>📊 إحصائية الفروقات</h3>", unsafe_allow_html=True)
-                    c1, c2, c3 = st.columns(3)
-                    with c1: 
-                        st.markdown(f"<div class='report-box'>حركة الكلية<br><h2>{counters['total_fam']} عائلة</h2>الصافي النهائي: {counters['net_total']:+d}</div>", unsafe_allow_html=True)
-                    with c2: 
-                        st.markdown(f"<div class='report-box'>حركة المستحقة<br><h2>{counters['eligible_fam']} عائلة</h2>الصافي النهائي: {counters['net_eligible']:+d}</div>", unsafe_allow_html=True)
-                    with c3: 
-                        st.markdown(f"<div class='report-box'>عوائل مضافة/محذوفة<br><h2>{counters['added_fam'] + counters['deleted_fam']} عائلة</h2></div>", unsafe_allow_html=True)
-                    
-                    base_name = new_file.name.rsplit('.', 1)[0]
-                    word_report = create_word_table_report(df_results, f"متغيرات - {base_name}")
-                    st.download_button(
-                        label="📥 تحميل جدول المتغيرات المطور (Word)",
-                        data=word_report,
-                        file_name=f"متغيرات_{base_name}.docx",
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    )
-                else:
-                    st.success("🎉 الملفان متطابقان تماماً رقمياً!")
-            except Exception as e:
-                st.error(f"خطأ: {e}")
+            with col3:
+                st.markdown(f"<div class='report-box'><div class='stat-title'>المنطقة 3</div><div class='stat-value'>{len(z3)} فرد</div></div>", unsafe_allow_html=True)
+                if z3: st.download_button("📥 تحميل المنطقة 3", data=create_word_file(z3), file_name="المنطقة_3.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
