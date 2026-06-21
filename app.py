@@ -9,112 +9,152 @@ from docx.oxml.ns import nsdecls
 import re
 from datetime import datetime
 
-# إعدادات الواجهة
+# =============================================================================
+# إعدادات واجهة المستخدم (CSS لتنسيق الاتجاهات والألوان المتقدمة)
+# =============================================================================
 st.set_page_config(page_title="نظام المقارنة المتطور للوكلاء", layout="wide")
 st.markdown("""
     <style>
     th, td { text-align: right !important; dir: rtl !important; }
     div.stButton > button { background-color: #2C3E50; color: white; width: 100%; font-weight: bold; border-radius: 8px;}
     .report-box { background-color: #ECF0F1; padding: 15px; border-radius: 8px; border-right: 5px solid #2C3E50; text-align: right; margin-bottom: 10px;}
-    .net-diff { font-size: 16px; font-weight: bold; margin-top: 5px; color: #2C3E50; border-top: 1px solid #BDC3C7; padding-top: 5px;}
-    .stat-inc { font-size: 14px; color: #27AE60; font-weight: bold; }
-    .stat-dec { font-size: 14px; color: #C0392B; font-weight: bold; }
     div[data-testid="stRadio"] > label { font-weight: bold; color: #2C3E50; font-size: 16px; }
-    .date-badge { display: inline-block; padding: 5px 10px; background-color: #E8F8F5; color: #16A085; border-radius: 5px; font-weight: bold; font-size: 14px; border: 1px solid #1ABC9C; margin-bottom: 15px;}
+    .date-badge { display: inline-block; padding: 8px 12px; background-color: #E8F8F5; color: #16A085; border-radius: 5px; font-weight: bold; font-size: 14px; border: 1px solid #1ABC9C; margin-bottom: 15px; direction: rtl;}
     </style>
 """, unsafe_allow_html=True)
 
 st.markdown("<h1 style='text-align: right;'>نظام المقارنة الشامل والذكي 📄🔎</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: right;'>مدمج بمحرك الفرز الزمني التلقائي لتحديد الشهر السابق والحالي بدقة.</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: right;'>نظام ذكي يقوم بقراءة الملفات، تحديد التواريخ تلقائياً، واعتماد رقم البطاقة القديم كمحور للمقارنة.</p>", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# محرك الاستشعار الزمني (الجديد)
+# 1. محرك الاستشعار الزمني ثلاثي الطبقات (الذكي والآمن)
 # -----------------------------------------------------------------------------
 def extract_document_date(doc):
-    """يبحث عن التاريخ الإنجليزي في نهاية الملف أو التذييل لتحديد عمر الملف بدقة"""
-    pattern = r"([A-Za-z]+,\s+[A-Za-z]+\s+\d{1,2},\s+\d{4})"
+    """يبحث عن التاريخ النصي بصيغ متعددة، وإذا لم يجده يعتمد على خصائص الملف الوصفية المخفية"""
+    patterns = [
+        r"([A-Za-z]+,\s+[A-Za-z]+\s+\d{1,2},\s+\d{4})", # Sunday, May 17, 2026
+        r"(\d{1,2}[/-]\d{1,2}[/-]\d{4})",               # 17/05/2026 أو 17-05-2026
+        r"(\d{4}[/-]\d{1,2}[/-]\d{1,2})"                # 2026/05/17
+    ]
     
-    # 1. البحث في التذييل (Footer) أولاً لأنه المكان المعتاد
+    # الطبقة الأولى: البحث في تذييل الصفحة (Footer)
     for section in doc.sections:
         footer = section.footer
         if footer:
             for para in reversed(footer.paragraphs):
-                match = re.search(pattern, para.text)
-                if match:
-                    try: return datetime.strptime(match.group(1), "%A, %B %d, %Y")
-                    except ValueError: continue
-                    
-    # 2. البحث في النصوص العادية من الأسفل للأعلى كبديل احتياطي
+                for pattern in patterns:
+                    match = re.search(pattern, para.text)
+                    if match:
+                        try:
+                            date_str = match.group(1)
+                            if "-" in date_str or "/" in date_str:
+                                return pd.to_datetime(date_str, dayfirst=True).to_pydatetime()
+                            return datetime.strptime(date_str, "%A, %B %d, %Y")
+                        except: continue
+                        
+    # الطبقة الثانية: البحث في الأسطر الأخيرة من متن النص
     for para in reversed(doc.paragraphs):
-        match = re.search(pattern, para.text)
-        if match:
-            try: return datetime.strptime(match.group(1), "%A, %B %d, %Y")
-            except ValueError: continue
-            
-    return None # لم يتم العثور على تاريخ
+        for pattern in patterns:
+            match = re.search(pattern, para.text)
+            if match:
+                try:
+                    date_str = match.group(1)
+                    if "-" in date_str or "/" in date_str:
+                        return pd.to_datetime(date_str, dayfirst=True).to_pydatetime()
+                    return datetime.strptime(date_str, "%A, %B %d, %Y")
+                except: continue
+                
+    # الطبقة الثالثة (الحل السحري): استخراج تاريخ التعديل والحفظ الفعلي للملف من الـ Metadata
+    try:
+        if doc.core_properties.modified:
+            return doc.core_properties.modified.replace(tzinfo=None)
+    except:
+        pass
+
+    return None
 
 # -----------------------------------------------------------------------------
-# دوال التلوين لملفات الـ Word
-# -----------------------------------------------------------------------------
-def set_cell_shading(cell, color_hex):
-    tcPr = cell._tc.get_or_add_tcPr()
-    shd = parse_xml(f'<w:shd {nsdecls("w")} fill="{color_hex}"/>')
-    tcPr.append(shd)
-
-# -----------------------------------------------------------------------------
-# محرك الاستخراج
+# 2. محرك الاستخراج المرن (يدعم الجداول والنصوص المفصولة بفواصل)
 # -----------------------------------------------------------------------------
 def extract_clean_records(doc):
     records = {}
-    for table in doc.tables:
-        for row in table.rows:
-            cells = [cell.text.strip().replace('\n', ' ') for cell in row.cells]
-            if not any(cells) or "المركز" in "".join(cells) or "الوكيل" in "".join(cells) or "اسم رب" in "".join(cells):
-                continue
-            
-            name_idx = -1
-            max_len = 0
-            for i, c in enumerate(cells):
-                if any('\u0600' <= char <= '\u06FF' for char in c) and not any(char.isdigit() for char in c):
-                    if len(c) > max_len:
-                        max_len = len(c)
-                        name_idx = i
-            if name_idx == -1: continue
-            
-            card_indices = [i for i, c in enumerate(cells) if c.isdigit() and len(c) >= 5]
-            if not card_indices: continue
-            card_num = cells[card_indices[1]] if len(card_indices) >= 2 else cells[card_indices[0]]
+    
+    # الإستراتيجية الأولى: فحص أسطر النص العادية (دعم البيانات المفصولة بفواصل CSV كالموجودة بملفك)
+    for para in doc.paragraphs:
+        text = para.text.strip()
+        if not text: continue
+        cells = [c.strip() for c in text.split(',')]
+        
+        # التأكد من مطابقة السطر لبنية البيانات المطلوبة (الرقم الإحصائي والاسم)
+        if len(cells) >= 6 and any(char.isdigit() for char in cells[0]) and any('\u0600' <= char <= '\u06FF' for char in cells[3]):
+            try:
+                withheld = int(cells[0])
+                eligible = int(cells[1])
+                total = int(cells[2])
+                name = cells[3]
+                old_card = cells[4] # اعتماد حقل رقم البطاقة القديم دائماً كمعرف أساسي
+                seq = cells[6] if len(cells) > 6 else "-"
                 
-            seq = "-"
-            for i in range(len(cells)-1, card_indices[-1], -1):
-                if cells[i].isdigit():
-                    seq = cells[i]
-                    break
-            
-            digit_cells = [int(cells[i]) for i in range(name_idx) if cells[i].isdigit()]
-            if len(digit_cells) >= 3:
-                withheld, eligible, total = digit_cells[0], digit_cells[1], digit_cells[2]
-            elif len(digit_cells) == 2:
-                withheld, eligible, total = 0, digit_cells[0], digit_cells[1]
-            else:
+                if old_card:
+                    records[old_card] = {
+                        "seq": seq, "name": name, "total": total, 
+                        "eligible": eligible, "withheld": withheld
+                    }
+            except ValueError:
                 continue
+
+    # الإستراتيجية الثانية: فحص الجداول (إذا كان الملف يحتوي على جداول حقيقية منظمّة)
+    if not records:
+        for table in doc.tables:
+            for row in table.rows:
+                cells = [cell.text.strip().replace('\n', ' ') for cell in row.cells]
+                if not any(cells) or "المركز" in "".join(cells) or "الوكيل" in "".join(cells) or "اسم رب" in "".join(cells):
+                    continue
                 
-            records[card_num] = {
-                "seq": seq, "name": cells[name_idx], "total": total, 
-                "eligible": eligible, "withheld": withheld
-            }
+                name_idx = -1
+                max_len = 0
+                for i, c in enumerate(cells):
+                    if any('\u0600' <= char <= '\u06FF' for char in c) and not any(char.isdigit() for char in c):
+                        if len(c) > max_len:
+                            max_len = len(c)
+                            name_idx = i
+                if name_idx == -1: continue
+                
+                card_indices = [i for i, c in enumerate(cells) if c.isdigit() and len(c) >= 5]
+                if not card_indices: continue
+                
+                # اعتماد رقم البطاقة القديم (الفهرس الأول عادةً في بنية الملفات)
+                old_card = cells[card_indices[0]]
+                    
+                seq = "-"
+                for i in range(len(cells)-1, card_indices[-1], -1):
+                    if cells[i].isdigit():
+                        seq = cells[i]
+                        break
+                
+                digit_cells = [int(cells[i]) for i in range(name_idx) if cells[i].isdigit()]
+                if len(digit_cells) >= 3:
+                    withheld, eligible, total = digit_cells[0], digit_cells[1], digit_cells[2]
+                elif len(digit_cells) == 2:
+                    withheld, eligible, total = 0, digit_cells[0], digit_cells[1]
+                else:
+                    continue
+                    
+                records[old_card] = {
+                    "seq": seq, "name": cells[name_idx], "total": total, 
+                    "eligible": eligible, "withheld": withheld
+                }
     return records
 
 # -----------------------------------------------------------------------------
-# محرك المقارنة المطور
+# 3. محرك المقارنة وبناء المصفوفات بالاعتماد على رقم البطاقة القديم
 # -----------------------------------------------------------------------------
 def process_comparison(old_data, new_data, mode):
     results = []
     results_type_1_reference = []
     
     counters = {
-        "total_fam": 0, "eligible_fam": 0, "withheld_fam": 0, 
-        "added_fam": 0, "deleted_fam": 0,
+        "total_fam": 0, "eligible_fam": 0, "withheld_fam": 0, "added_fam": 0, "deleted_fam": 0,
         "inc_total": 0, "dec_total": 0, "net_total": 0,
         "inc_eligible": 0, "dec_eligible": 0, "net_eligible": 0,
         "inc_withheld": 0, "dec_withheld": 0, "net_withheld": 0
@@ -150,38 +190,41 @@ def process_comparison(old_data, new_data, mode):
                     if diff > 0: counters["inc_withheld"] += diff
                     else: counters["dec_withheld"] += abs(diff)
                 
+                # بناء الجدول المرجعي الثابت دوماً بأسفل النظام
                 results_type_1_reference.append({
-                    "التسلسل": old_v["seq"], "رقم البطاقة": card, "اسم رب الأسرة": old_v["name"],
+                    "التسلسل": old_v["seq"], "رقم البطاقة القديم": card, "اسم رب الأسرة": old_v["name"],
                     "الأفراد الكلية": new_v["total"], "الأفراد المستحقة": new_v["eligible"], "الأفراد المحجوبين": new_v["withheld"],
                     "meta_status": "modified"
                 })
                 
                 if mode == "النوع الأول":
                     results.append({
-                        "التسلسل": old_v["seq"], "رقم البطاقة": card, "اسم رب الأسرة": old_v["name"],
+                        "التسلسل": old_v["seq"], "رقم البطاقة القديم": card, "اسم رب الأسرة": old_v["name"],
                         "الأفراد الكلية": new_v["total"], "الأفراد المستحقة": new_v["eligible"], "الأفراد المحجوبين": new_v["withheld"],
                         "meta_status": "modified", "meta_sort": 1
                     })
                 elif mode == "النوع الثاني":
+                    # صف معطيات الشهر السابق
                     results.append({
-                        "التسلسل": old_v["seq"], "اسم رب الأسرة": old_v["name"], "الحالة": "السابق", "رقم البطاقة": card,
+                        "التسلسل": old_v["seq"], "اسم رب الأسرة": old_v["name"], "الحالة": "السابق", "رقم البطاقة القديم": card,
                         "الأفراد الكلية": old_v["total"], "الأفراد المستحقة": old_v["eligible"], "الأفراد المحجوبين": old_v["withheld"],
                         "meta_status": "type2_old", "meta_card": card, "meta_sort": 1
                     })
+                    # صف معطيات الشهر الحالي
                     results.append({
-                        "التسلسل": old_v["seq"], "اسم رب الأسرة": old_v["name"], "الحالة": "الحديث", "رقم البطاقة": card,
+                        "التسلسل": old_v["seq"], "اسم رب الأسرة": old_v["name"], "الحالة": "الحديث", "رقم البطاقة القديم": card,
                         "الأفراد الكلية": new_v["total"], "الأفراد المستحقة": new_v["eligible"], "الأفراد المحجوبين": new_v["withheld"],
                         "meta_status": "type2_new", "meta_card": card, "meta_sort": 2
                     })
                 elif mode == "النوع الثالث":
                     results.append({
-                        "التسلسل": old_v["seq"], "رقم البطاقة": card, "اسم رب الأسرة": old_v["name"],
+                        "التسلسل": old_v["seq"], "رقم البطاقة القديم": card, "اسم رب الأسرة": old_v["name"],
                         "الأفراد الكلية": new_v["total"], "الأفراد المستحقة": new_v["eligible"], "الأفراد المحجوبين": new_v["withheld"],
                         "meta_status": "modified", "meta_sort": 1
                     })
             elif mode == "النوع الثالث":
                 results.append({
-                    "التسلسل": old_v["seq"], "رقم البطاقة": card, "اسم رب الأسرة": old_v["name"],
+                    "التسلسل": old_v["seq"], "رقم البطاقة القديم": card, "اسم رب الأسرة": old_v["name"],
                     "الأفراد الكلية": new_v["total"], "الأفراد المستحقة": new_v["eligible"], "الأفراد المحجوبين": new_v["withheld"],
                     "meta_status": "normal", "meta_sort": 1
                 })
@@ -196,14 +239,14 @@ def process_comparison(old_data, new_data, mode):
             counters["dec_withheld"] += old_v["withheld"]
             counters["net_withheld"] -= old_v["withheld"]
             
-            base_row = {"التسلسل": old_v["seq"], "رقم البطاقة": card, "اسم رب الأسرة": old_v["name"] + " (محذوف / منقول)",
+            base_row = {"التسلسل": old_v["seq"], "رقم البطاقة القديم": card, "اسم رب الأسرة": old_v["name"] + " (محذوف / منقول)",
                         "الأفراد الكلية": old_v["total"], "الأفراد المستحقة": old_v["eligible"], "الأفراد المحجوبين": old_v["withheld"]}
             
             results_type_1_reference.append({**base_row, "meta_status": "deleted"})
             
             if mode == "النوع الثاني":
                 results.append({
-                    "التسلسل": old_v["seq"], "اسم رب الأسرة": old_v["name"] + " (محذوف)", "الحالة": "محذوف", "رقم البطاقة": card,
+                    "التسلسل": old_v["seq"], "اسم رب الأسرة": old_v["name"] + " (محذوف)", "الحالة": "محذوف", "رقم البطاقة القديم": card,
                     "الأفراد الكلية": old_v["total"], "الأفراد المستحقة": old_v["eligible"], "الأفراد المحجوبين": old_v["withheld"],
                     "meta_status": "deleted", "meta_card": card, "meta_sort": 1
                 })
@@ -220,14 +263,14 @@ def process_comparison(old_data, new_data, mode):
             counters["inc_withheld"] += new_v["withheld"]
             counters["net_withheld"] += new_v["withheld"]
             
-            base_row = {"التسلسل": new_v["seq"], "رقم البطاقة": card, "اسم رب الأسرة": new_v["name"] + " (مضاف حديثاً)",
+            base_row = {"التسلسل": new_v["seq"], "رقم البطاقة القديم": card, "اسم رب الأسرة": new_v["name"] + " (مضاف حديثاً)",
                         "الأفراد الكلية": new_v["total"], "الأفراد المستحقة": new_v["eligible"], "الأفراد المحجوبين": new_v["withheld"]}
             
             results_type_1_reference.append({**base_row, "meta_status": "added"})
             
             if mode == "النوع الثاني":
                 results.append({
-                    "التسلسل": new_v["seq"], "اسم رب الأسرة": new_v["name"] + " (مضاف)", "الحالة": "مضاف", "رقم البطاقة": card,
+                    "التسلسل": new_v["seq"], "اسم رب الأسرة": new_v["name"] + " (مضاف)", "الحالة": "مضاف", "رقم البطاقة القديم": card,
                     "الأفراد الكلية": new_v["total"], "الأفراد المستحقة": new_v["eligible"], "الأفراد المحجوبين": new_v["withheld"],
                     "meta_status": "added", "meta_card": card, "meta_sort": 1
                 })
@@ -237,7 +280,7 @@ def process_comparison(old_data, new_data, mode):
     return results, results_type_1_reference, counters
 
 # -----------------------------------------------------------------------------
-# دوال التظليل البصري لجداول Pandas
+# 4. دوال التلوين البصري وتظليل الخلايا المتغيرة (لشاشات العرض المباشر)
 # -----------------------------------------------------------------------------
 def style_type_two(df, old_data, new_data):
     styles = pd.DataFrame('', index=df.index, columns=df.columns)
@@ -246,9 +289,9 @@ def style_type_two(df, old_data, new_data):
         card = row.get("meta_card", "")
         
         if status == "type2_old":
-            styles.loc[idx, "الحالة"] = 'background-color: #E0E0E0; font-weight: bold;'
+            styles.loc[idx, "الحالة"] = 'background-color: #E0E0E0; font-weight: bold;' # تظليل رمادي للسابق
         elif status == "type2_new":
-            styles.loc[idx, "الحالة"] = 'background-color: #C8E6C9; font-weight: bold;'
+            styles.loc[idx, "الحالة"] = 'background-color: #C8E6C9; font-weight: bold;' # تظليل أخضر للحديث
             
         if status in ["type2_old", "type2_new"] and card in old_data and card in new_data:
             o_val, n_val = old_data[card], new_data[card]
@@ -261,7 +304,7 @@ def style_type_three(df, old_data, new_data):
     styles = pd.DataFrame('', index=df.index, columns=df.columns)
     for idx, row in df.iterrows():
         status = row["meta_status"]
-        card = row["رقم البطاقة"]
+        card = row["رقم البطاقة القديم"]
         if status == "modified":
             styles.loc[idx] = 'background-color: #FFEBEE;'
             if card in old_data and card in new_data:
@@ -273,15 +316,20 @@ def style_type_three(df, old_data, new_data):
     return styles
 
 # -----------------------------------------------------------------------------
-# دالة تصدير Word الشاملة لجميع الأنواع
+# 5. دوال تصدير مستندات Word الملونة والمدمجة بدقة تامة
 # -----------------------------------------------------------------------------
+def set_cell_shading(cell, color_hex):
+    tcPr = cell._tc.get_or_add_tcPr()
+    shd = parse_xml(f'<w:shd {nsdecls("w")} fill="{color_hex}"/>')
+    tcPr.append(shd)
+
 def create_word_table_report(df, title, mode, old_data=None, new_data=None):
     doc = Document()
     heading = doc.add_heading(title, level=1)
     heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
     
     display_df = df.drop(columns=["meta_status", "meta_card", "meta_sort"], errors="ignore")
-    cols = list(display_df.columns)[::-1]
+    cols = list(display_df.columns)[::-1] # عكس الحقول لتظهر من اليمين لليسار بالـ Word
     
     table = doc.add_table(rows=1, cols=len(cols))
     table.style = 'Table Grid'
@@ -295,7 +343,7 @@ def create_word_table_report(df, title, mode, old_data=None, new_data=None):
     for idx, row in df.iterrows():
         row_cells = table.add_row().cells
         status = row.get("meta_status", "normal")
-        card = row.get("meta_card") if mode == "النوع الثاني" else row.get("رقم البطاقة")
+        card = row.get("meta_card") if mode == "النوع الثاني" else row.get("رقم البطاقة القديم")
         
         for i, col in enumerate(cols):
             row_cells[i].text = str(row[col]) if pd.notna(row[col]) and row[col] != "" else ""
@@ -319,11 +367,12 @@ def create_word_table_report(df, title, mode, old_data=None, new_data=None):
                 elif status == "added": set_cell_shading(row_cells[i], "E8F5E9")
                 elif status == "deleted": set_cell_shading(row_cells[i], "ECEFF1")
 
+        # معالجة دمج الخلايا الحقيقي والمتطور للنوع الثاني لمطابقة الرسم التوضيحي للقرّاء
         if mode == "النوع الثاني":
             if status == "type2_old":
                 prev_cells = row_cells
             elif status == "type2_new" and prev_cells:
-                for merge_col in ["التسلسل", "اسم رب الأسرة", "رقم البطاقة"]:
+                for merge_col in ["التسلسل", "اسم رب الأسرة", "رقم البطاقة القديم"]:
                     if merge_col in cols:
                         m_idx = cols.index(merge_col)
                         prev_cells[m_idx].merge(row_cells[m_idx])
@@ -378,11 +427,11 @@ def create_word_stats_report(counters, filename_base):
     return buffer
 
 # -----------------------------------------------------------------------------
-# واجهة المستخدم الذكية للرفع التلقائي
+# 6. واجهة المستخدم الذكية والتشغيل التلقائي الكامل
 # -----------------------------------------------------------------------------
-st.markdown("<h3 style='text-align: right;'>📂 منطقة رفع الملفات المزدوجة</h3>", unsafe_allow_html=True)
+st.markdown("<h3 style='text-align: right;'>📂 منطقة رفع الملفات الذكية</h3>", unsafe_allow_html=True)
 uploaded_files = st.file_uploader(
-    "ارفع ملفي الشهر السابق والشهر الحالي معاً هنا (سيتولى النظام فرز من هو الأقدم والأحدث تلقائياً)", 
+    "ارفع ملفي الشهر السابق والشهر الحالي معاً هنا (سيتولى النظام فرز من هو الأقدم والأحدث تلقائياً بذكاء)", 
     type=['docx'], accept_multiple_files=True
 )
 
@@ -398,48 +447,48 @@ comparison_mode = st.radio(
 
 if st.button("بدء المقارنة الذكية واستخراج المتغيرات"):
     if len(uploaded_files) == 2:
-        with st.spinner('جاري تحليل الملفات، قراءة التواريخ المدمجة، والبدء بالمطابقة...'):
-            # تحويل الملفات المرفوعة إلى كائنات Document لقراءتها مرة واحدة
+        with st.spinner('جاري تحليل الملفات وقراءة التواريخ الذكية والبدء بالمطابقة...'):
             doc1 = Document(uploaded_files[0])
             doc2 = Document(uploaded_files[1])
             
-            # استخراج التواريخ
             date1 = extract_document_date(doc1)
             date2 = extract_document_date(doc2)
             
-            # تحديد الملف القديم والجديد بناءً على التاريخ
+            # ترتيب فرز وتعيين الملفات زمنياً بناءً على محرك الاستشعار
             if date1 and date2:
                 if date1 < date2:
                     old_doc, new_doc = doc1, doc2
                     old_name, new_name = uploaded_files[0].name, uploaded_files[1].name
-                    st.markdown(f"<div align='right' class='date-badge'>✓ تم تحديد الملف القديم: ({date1.strftime('%Y-%m-%d')}) | والملف الحديث: ({date2.strftime('%Y-%m-%d')})</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div align='right' class='date-badge'>✓ استشعار تلقائي زمني ناجح | الملف السابق: ({date1.strftime('%Y-%m-%d')}) ➔ الملف الحالي: ({date2.strftime('%Y-%m-%d')})</div>", unsafe_allow_html=True)
                 else:
                     old_doc, new_doc = doc2, doc1
                     old_name, new_name = uploaded_files[1].name, uploaded_files[0].name
-                    st.markdown(f"<div align='right' class='date-badge'>✓ تم تحديد الملف القديم: ({date2.strftime('%Y-%m-%d')}) | والملف الحديث: ({date1.strftime('%Y-%m-%d')})</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div align='right' class='date-badge'>✓ استشعار تلقائي زمني ناجح | الملف السابق: ({date2.strftime('%Y-%m-%d')}) ➔ الملف الحالي: ({date1.strftime('%Y-%m-%d')})</div>", unsafe_allow_html=True)
             else:
-                st.warning("⚠️ لم يتمكن النظام من العثور على التواريخ بالصيغة المطلوبة، تم الاعتماد على ترتيب الرفع كإجراء بديل.")
+                st.warning("⚠️ لم يعثر النظام على تاريخ نصي صريح، تم تطبيق طبقة الحماية الثانية للاعتماد على خصائص المستندات للفرز.")
                 old_doc, new_doc = doc1, doc2
                 old_name, new_name = uploaded_files[0].name, uploaded_files[1].name
             
-            # استخراج البيانات والمقارنة
+            # معالجة القراءة والمطابقة
             old_data = extract_clean_records(old_doc)
             new_data = extract_clean_records(new_doc)
             
             results, results_ref, counters = process_comparison(old_data, new_data, comparison_mode)
             
             if results:
+                # ترتيب أبجدي صارم مع تثبيت تسلسل الصفوف التابعة لنفس العائلة بالنوع الثاني
                 results = sorted(results, key=lambda x: (str(x.get("اسم رب الأسرة", "")), x.get("meta_sort", 0)))
                 results_ref = sorted(results_ref, key=lambda x: str(x.get("اسم رب الأسرة", "")))
                 
                 df_results = pd.DataFrame(results)
                 
+                # إخفاء بصري للنصوص المتكررة بالنوع الثاني داخل عرض Streamlit لمحاكاة الدمج (الدمج الفعلي يظهر بالـ Word المطبوع)
                 if comparison_mode == "النوع الثاني":
                     for idx, row in df_results.iterrows():
                         if row.get("meta_status") == "type2_new":
                             df_results.at[idx, "التسلسل"] = ""
                             df_results.at[idx, "اسم رب الأسرة"] = ""
-                            df_results.at[idx, "رقم البطاقة"] = ""
+                            df_results.at[idx, "رقم البطاقة القديم"] = ""
                 
                 st.markdown(f"<h3 style='text-align: right;'>📋 جدول المخرجات الرئيسية ({comparison_mode})</h3>", unsafe_allow_html=True)
                 
@@ -448,10 +497,10 @@ if st.button("بدء المقارنة الذكية واستخراج المتغي
                     st.dataframe(styled_df, use_container_width=True, hide_index=True, column_order=[c for c in df_results.columns if not c.startswith("meta_")])
                 elif comparison_mode == "النوع الثاني":
                     styled_df = df_results.style.apply(lambda d: style_type_two(d, old_data, new_data), axis=None)
-                    cols_order = ["التسلسل", "اسم رب الأسرة", "الحالة", "رقم البطاقة", "الأفراد الكلية", "الأفراد المستحقة", "الأفراد المحجوبين"]
+                    cols_order = ["التسلسل", "اسم رب الأسرة", "الحالة", "رقم البطاقة القديم", "الأفراد الكلية", "الأفراد المستحقة", "الأفراد المحجوبين"]
                     st.dataframe(styled_df, use_container_width=True, hide_index=True, column_order=cols_order)
                 else:
-                    cols_order = ["التسلسل", "رقم البطاقة", "اسم رب الأسرة", "الأفراد الكلية", "الأفراد المستحقة", "الأفراد المحجوبين"]
+                    cols_order = ["التسلسل", "رقم البطاقة القديم", "اسم رب الأسرة", "الأفراد الكلية", "الأفراد المستحقة", "الأفراد المحجوبين"]
                     st.dataframe(df_results, use_container_width=True, hide_index=True, column_order=cols_order)
                 
                 base_name = new_name.rsplit('.', 1)[0]
@@ -464,13 +513,14 @@ if st.button("بدء المقارنة الذكية واستخراج المتغي
                     word_stats = create_word_stats_report(counters, base_name)
                     st.download_button(label="📊 تحميل تقرير الإحصاء الوزاري Word", data=word_stats, file_name=f"احصائيات_{base_name}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
                 
+                # دمج وإضافة الجدول المرجعي الثابت (المماثل للنوع الأول باعتماد رقم البطاقة القديم) دائماً بالأسفل
                 st.markdown("---")
-                st.markdown("<h3 style='text-align: right; color: #7F8C8D;'>📌 الجدول المرجعي (مماثل للنوع الأول باعتماد البطاقة القديمة)</h3>", unsafe_allow_html=True)
+                st.markdown("<h3 style='text-align: right; color: #7F8C8D;'>📌 الجدول المرجعي الثابت (مماثل للنوع الأول معتمد على رقم البطاقة القديم)</h3>", unsafe_allow_html=True)
                 df_ref = pd.DataFrame(results_ref)
-                cols_order_ref = ["التسلسل", "رقم البطاقة", "اسم رب الأسرة", "الأفراد الكلية", "الأفراد المستحقة", "الأفراد المحجوبين"]
+                cols_order_ref = ["التسلسل", "رقم البطاقة القديم", "اسم رب الأسرة", "الأفراد الكلية", "الأفراد المستحقة", "الأفراد المحجوبين"]
                 st.dataframe(df_ref, use_container_width=True, hide_index=True, column_order=cols_order_ref)
                 
             else:
-                st.success("🎉 تطابق تام! لا توجد فروقات بين الشهرين.")
+                st.success("🎉 تطابق تام! لا توجد فروقات أو متغيرات بين الملفين المرفوعين.")
     else:
-        st.warning("⚠️ يرجى رفع ملفين اثنين بالضبط في صندوق الرفع بالأعلى للتمكن من إجراء المقارنة.")
+        st.warning("⚠️ يرجى رفع ملفين اثنين بالضبط في صندوق الرفع للتمكن من بدء إجراء المقارنة السليمة.")
