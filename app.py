@@ -4,182 +4,152 @@ from io import BytesIO
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.shared import Pt, Cm, RGBColor
 from docx.oxml import parse_xml
 from docx.oxml.ns import nsdecls
-import os
 import re
 from datetime import datetime
 
-# مكتبات الـ PDF
-try:
-    import arabic_reshaper
-    from bidi.algorithm import get_display
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
-    from reportlab.lib.pagesizes import A4, landscape
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib import colors
-    LIBS_READY = True
-except ImportError:
-    LIBS_READY = False
-
-# -----------------------------------------------------------------------------
-# إعدادات الواجهة الأساسية
-# -----------------------------------------------------------------------------
-st.set_page_config(page_title="نظام المقارنة الشامل للوكلاء", layout="wide")
-
-st.markdown("""
-    <div style='background-color: #E8F8F5; padding: 10px; border-radius: 8px; text-align: center; border: 2px solid #1ABC9C; margin-bottom: 20px;'>
-        <h4 style='color: #16A085; margin: 0;'>🔗 لتحويل ملفات PDF إلى Word بدقة عالية وبشكل مجاني</h4>
-        <a href='https://www.ilovepdf.com/ar/pdf_to_word' target='_blank' style='font-size: 18px; font-weight: bold; color: #2980B9; text-decoration: none;'>اضغط هنا للانتقال إلى موقع iLovePDF</a>
-    </div>
-""", unsafe_allow_html=True)
-
+# =============================================================================
+# إعدادات واجهة المستخدم وتنسيقات الـ CSS
+# =============================================================================
+st.set_page_config(page_title="نظام المقارنة المتطور للوكلاء", layout="wide")
 st.markdown("""
     <style>
-    th, td { text-align: right !important; dir: rtl !important; }
+    th, td { text-align: right !important; dir: rtl !important; white-space: nowrap !important; }
     div.stButton > button { background-color: #2C3E50; color: white; width: 100%; font-weight: bold; border-radius: 8px;}
     .report-box { background-color: #ECF0F1; padding: 15px; border-radius: 8px; border-right: 5px solid #2C3E50; text-align: right; margin-bottom: 10px;}
-    .net-diff { font-size: 16px; font-weight: bold; margin-top: 5px; color: #2C3E50; border-top: 1px solid #BDC3C7; padding-top: 5px;}
-    .stat-inc { font-size: 14px; color: #27AE60; font-weight: bold; }
-    .stat-dec { font-size: 14px; color: #C0392B; font-weight: bold; }
-    .compare-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    .compare-table th, .compare-table td { border: 1px solid #ddd; padding: 8px; text-align: center !important; }
-    .compare-table th { background-color: #2C3E50; color: white; }
-    .auto-detect-box { background-color: #FCF3CF; padding: 10px; border-radius: 5px; border-right: 5px solid #F1C40F; color: #7D6608; font-weight: bold; }
+    div[data-testid="stRadio"] > label { font-weight: bold; color: #2C3E50; font-size: 16px; }
+    .date-badge { display: inline-block; padding: 8px 12px; background-color: #F8F9F9; color: #2C3E50; border-radius: 5px; font-weight: bold; font-size: 15px; border: 1px solid #BDC3C7; margin-bottom: 5px; direction: rtl; width: 100%; text-align: center;}
+    .date-badge span.old { color: #C0392B; }
+    .date-badge span.new { color: #27AE60; }
     </style>
 """, unsafe_allow_html=True)
 
 st.markdown("<h1 style='text-align: right;'>نظام المقارنة الشامل والذكي 📄🔎</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: right;'>النسخة الاحترافية: تدعم خيار التبديل بين البطاقة القديمة أو الحديثة بضغطة زر.</p>", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# دالة الاستشعار الذكي للتواريخ
+# 1. محرك الاستشعار الزمني المحسن
 # -----------------------------------------------------------------------------
-def extract_document_date(file_obj):
-    doc = Document(file_obj)
-    texts = []
-    for p in doc.paragraphs:
-        if p.text.strip(): texts.append(p.text.strip())
-    for table in doc.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                if cell.text.strip(): texts.append(cell.text.strip())
-                
-    texts.reverse()
-    date_pattern_num = re.compile(r'\b(\d{2,4}[/.-]\d{1,2}[/.-]\d{2,4})\b')
-    date_pattern_eng = re.compile(r'([A-Za-z]+,\s+[A-Za-z]+\s+\d{1,2},\s+\d{4})')
+def extract_document_date(doc):
+    patterns = [
+        r"([A-Za-z]+,\s+[A-Za-z]+\s+\d{1,2},\s+\d{4})", 
+        r"(\d{1,2}[/-]\d{1,2}[/-]\d{4})",               
+        r"(\d{4}[/-]\d{1,2}[/-]\d{1,2})"                
+    ]
     
-    for t in texts:
-        matches_eng = date_pattern_eng.findall(t)
-        if matches_eng:
-            for match_str in matches_eng:
-                try:
-                    parsed = datetime.strptime(match_str, '%A, %B %d, %Y')
-                    file_obj.seek(0)
-                    return parsed, match_str
-                except ValueError:
-                    continue
-
-        matches_num = date_pattern_num.findall(t)
-        if matches_num:
-            for match_str in matches_num:
-                formats = ['%Y/%m/%d', '%d/%m/%Y', '%m/%d/%Y', '%Y-%m-%d', '%d-%m-%Y', '%Y.%m.%d', '%d.%m.%Y']
-                for fmt in formats:
-                    try:
-                        parsed = datetime.strptime(match_str, fmt)
-                        file_obj.seek(0)
-                        return parsed, match_str
-                    except ValueError:
-                        continue
+    for section in doc.sections:
+        footer = section.footer
+        if footer:
+            for para in reversed(footer.paragraphs):
+                for pattern in patterns:
+                    match = re.search(pattern, para.text)
+                    if match:
+                        try:
+                            d_str = match.group(1)
+                            if "-" in d_str or "/" in d_str: return pd.to_datetime(d_str, dayfirst=True).to_pydatetime()
+                            return datetime.strptime(d_str, "%A, %B %d, %Y")
+                        except: continue
                         
-    file_obj.seek(0)
-    return None, None
-
-# -----------------------------------------------------------------------------
-# دالات المساعدة
-# -----------------------------------------------------------------------------
-def fix_arabic(text):
-    if not text: return ""
-    try:
-        return get_display(arabic_reshaper.reshape(str(text)))
-    except Exception:
-        return str(text)
-
-def set_cell_shading(cell, color_hex):
-    tcPr = cell._tc.get_or_add_tcPr()
-    shd = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{color_hex}"/>')
-    tcPr.append(shd)
-
-def set_cell_rotation(cell):
-    tcPr = cell._tc.get_or_add_tcPr()
-    text_dir = parse_xml(f'<w:textDirection {nsdecls("w")} w:val="btLr"/>')
-    tcPr.append(text_dir)
-
-def repeat_header_row(row):
-    trPr = row._tr.get_or_add_trPr()
-    tblHeader = parse_xml(f'<w:tblHeader {nsdecls("w")}/>')
-    trPr.append(tblHeader)
-
-# -----------------------------------------------------------------------------
-# محرك الاستخراج
-# -----------------------------------------------------------------------------
-def extract_clean_records(file_obj):
-    doc = Document(file_obj)
-    records = {}
-    for table in doc.tables:
-        for row in table.rows:
-            cells = [cell.text.strip().replace('\n', ' ') for cell in row.cells]
-            if not any(cells) or "المركز" in "".join(cells) or "الوكيل" in "".join(cells) or "اسم رب" in "".join(cells):
-                continue
-            name_idx = -1
-            max_len = 0
-            for i, c in enumerate(cells):
-                if any('\u0600' <= char <= '\u06FF' for char in c) and not any(char.isdigit() for char in c):
-                    if len(c) > max_len:
-                        max_len = len(c)
-                        name_idx = i
-            if name_idx == -1: continue
-            
-            card_indices = [i for i, c in enumerate(cells) if c.isdigit() and len(c) >= 5]
-            if not card_indices: continue
-            
-            card_num = cells[card_indices[1]] if len(card_indices) >= 2 else cells[card_indices[0]]
-            old_card_num = cells[card_indices[0]] if len(card_indices) >= 2 else "-"
-            
-            seq = "-"
-            for i in range(len(cells)-1, card_indices[-1], -1):
-                if cells[i].isdigit():
-                    seq = cells[i]
-                    break
-            
-            digit_cells = [int(cells[i]) for i in range(name_idx) if cells[i].isdigit()]
-            if len(digit_cells) >= 3:
-                withheld, eligible, total = digit_cells[0], digit_cells[1], digit_cells[2]
-            elif len(digit_cells) == 2:
-                withheld, eligible, total = 0, digit_cells[0], digit_cells[1]
-            else:
-                continue
+    paragraphs = doc.paragraphs[-50:] if len(doc.paragraphs) > 50 else doc.paragraphs
+    for para in reversed(paragraphs):
+        for pattern in patterns:
+            match = re.search(pattern, para.text)
+            if match:
+                try:
+                    d_str = match.group(1)
+                    if "-" in d_str or "/" in d_str: return pd.to_datetime(d_str, dayfirst=True).to_pydatetime()
+                    return datetime.strptime(d_str, "%A, %B %d, %Y")
+                except: continue
                 
-            records[card_num] = {
-                "seq": seq, "name": cells[name_idx], "total": total, 
-                "eligible": eligible, "withheld": withheld, "old_card": old_card_num
-            }
+    return None
+
+# -----------------------------------------------------------------------------
+# 2. محرك الاستخراج الدقيق (يدعم اختيار نوع البطاقة)
+# -----------------------------------------------------------------------------
+def extract_clean_records(doc, card_type="old"):
+    records = {}
+    
+    # قراءة النصوص المفصولة بفواصل
+    for para in doc.paragraphs:
+        text = para.text.strip()
+        if not text: continue
+        cells = [c.strip() for c in text.split(',')]
+        
+        if len(cells) >= 6 and any(char.isdigit() for char in cells[0]) and any('\u0600' <= char <= '\u06FF' for char in cells[3]):
+            try:
+                withheld = int(cells[0])
+                eligible = int(cells[1])
+                total = int(cells[2])
+                name = cells[3]
+                
+                old_card = cells[4]
+                new_card = cells[5] if len(cells) > 5 else old_card
+                selected_card = old_card if card_type == "old" else new_card
+                
+                seq = cells[6] if len(cells) > 6 else "-"
+                
+                if selected_card:
+                    records[selected_card] = {
+                        "seq": seq, "name": name, "total": total, 
+                        "eligible": eligible, "withheld": withheld
+                    }
+            except ValueError:
+                continue
+
+    # قراءة الجداول المعيارية
+    if not records:
+        for table in doc.tables:
+            for row in table.rows:
+                cells = [cell.text.strip().replace('\n', ' ') for cell in row.cells]
+                if not any(cells) or "المركز" in "".join(cells) or "الوكيل" in "".join(cells) or "اسم رب" in "".join(cells):
+                    continue
+                
+                name_idx = -1
+                max_len = 0
+                for i, c in enumerate(cells):
+                    if any('\u0600' <= char <= '\u06FF' for char in c) and not any(char.isdigit() for char in c):
+                        if len(c) > max_len:
+                            max_len = len(c)
+                            name_idx = i
+                if name_idx == -1: continue
+                
+                card_indices = [i for i, c in enumerate(cells) if c.isdigit() and len(c) >= 5]
+                if not card_indices: continue
+                
+                old_card = cells[card_indices[0]]
+                new_card = cells[card_indices[-1]] if len(card_indices) > 1 else old_card
+                selected_card = old_card if card_type == "old" else new_card
+                
+                seq = "-"
+                for i in range(len(cells)-1, card_indices[-1], -1):
+                    if cells[i].isdigit():
+                        seq = cells[i]
+                        break
+                
+                digit_cells = [int(cells[i]) for i in range(name_idx) if cells[i].isdigit()]
+                if len(digit_cells) >= 3:
+                    withheld, eligible, total = digit_cells[0], digit_cells[1], digit_cells[2]
+                elif len(digit_cells) == 2:
+                    withheld, eligible, total = 0, digit_cells[0], digit_cells[1]
+                else: continue
+                    
+                records[selected_card] = {"seq": seq, "name": cells[name_idx], "total": total, "eligible": eligible, "withheld": withheld}
     return records
 
 # -----------------------------------------------------------------------------
-# محرك المقارنة
+# 3. محرك المقارنة المتطور
 # -----------------------------------------------------------------------------
-def compare_records(old_data, new_data):
+def process_comparison(old_data, new_data, mode, card_col_name):
     results = []
+    results_type_1_reference = []
+    
     counters = {
-        "total_fam": 0, "eligible_fam": 0, "withheld_fam": 0, 
-        "added_fam": 0, "deleted_fam": 0,
-        "inc_total": 0, "dec_total": 0, "net_total": 0,
-        "inc_eligible": 0, "dec_eligible": 0, "net_eligible": 0,
+        "total_fam": 0, "eligible_fam": 0, "withheld_fam": 0, "added_fam": 0, "deleted_fam": 0,
+        "inc_total": 0, "dec_total": 0, "net_total": 0, "inc_eligible": 0, "dec_eligible": 0, "net_eligible": 0,
         "inc_withheld": 0, "dec_withheld": 0, "net_withheld": 0
     }
+    
     all_cards = set(old_data.keys()).union(set(new_data.keys()))
     
     for card in all_cards:
@@ -188,249 +158,208 @@ def compare_records(old_data, new_data):
             diff_total = old_v["total"] != new_v["total"]
             diff_elig = old_v["eligible"] != new_v["eligible"]
             diff_with = old_v["withheld"] != new_v["withheld"]
+            is_changed = diff_total or diff_elig or diff_with
             
-            if diff_total or diff_elig or diff_with:
-                if diff_total: 
+            if is_changed:
+                if diff_total:
                     counters["total_fam"] += 1
                     diff = new_v["total"] - old_v["total"]
                     counters["net_total"] += diff
                     if diff > 0: counters["inc_total"] += diff
                     else: counters["dec_total"] += abs(diff)
-                if diff_elig: 
+                if diff_elig:
                     counters["eligible_fam"] += 1
                     diff = new_v["eligible"] - old_v["eligible"]
                     counters["net_eligible"] += diff
                     if diff > 0: counters["inc_eligible"] += diff
                     else: counters["dec_eligible"] += abs(diff)
-                if diff_with: 
+                if diff_with:
                     counters["withheld_fam"] += 1
                     diff = new_v["withheld"] - old_v["withheld"]
                     counters["net_withheld"] += diff
                     if diff > 0: counters["inc_withheld"] += diff
                     else: counters["dec_withheld"] += abs(diff)
                 
+                results_type_1_reference.append({
+                    "التسلسل": old_v["seq"], "اسم رب الأسرة": old_v["name"], card_col_name: card,
+                    "الأفراد الكلية": new_v["total"], "الأفراد المستحقة": new_v["eligible"], "الأفراد المحجوبين": new_v["withheld"],
+                    "meta_status": "modified"
+                })
+                
+                if mode == "النوع الأول":
+                    results.append({
+                        "التسلسل": old_v["seq"], "اسم رب الأسرة": old_v["name"], card_col_name: card,
+                        "الأفراد الكلية": new_v["total"], "الأفراد المستحقة": new_v["eligible"], "الأفراد المحجوبين": new_v["withheld"],
+                        "meta_status": "modified", "meta_sort": 1
+                    })
+                elif mode == "النوع الثاني":
+                    results.append({
+                        "التسلسل": old_v["seq"], "اسم رب الأسرة": old_v["name"], card_col_name: card, "الحالة": "السابق",
+                        "الأفراد الكلية": old_v["total"], "الأفراد المستحقة": old_v["eligible"], "الأفراد المحجوبين": old_v["withheld"],
+                        "meta_status": "type2_old", "meta_card": card, "meta_sort": 1
+                    })
+                    results.append({
+                        "التسلسل": old_v["seq"], "اسم رب الأسرة": old_v["name"], card_col_name: card, "الحالة": "الحديث",
+                        "الأفراد الكلية": new_v["total"], "الأفراد المستحقة": new_v["eligible"], "الأفراد المحجوبين": new_v["withheld"],
+                        "meta_status": "type2_new", "meta_card": card, "meta_sort": 2
+                    })
+                elif mode == "النوع الثالث":
+                    results.append({
+                        "التسلسل": old_v["seq"], "اسم رب الأسرة": old_v["name"], card_col_name: card,
+                        "الأفراد الكلية": new_v["total"], "الأفراد المستحقة": new_v["eligible"], "الأفراد المحجوبين": new_v["withheld"],
+                        "meta_status": "modified", "meta_sort": 1
+                    })
+            elif mode == "النوع الثالث":
                 results.append({
-                    "card": card, "seq_orig": new_v["seq"], "card_old": new_v["old_card"],
-                    "name": new_v["name"], "total": new_v["total"], "eligible": new_v["eligible"],
-                    "withheld": new_v["withheld"], "status": "modified"
+                    "التسلسل": old_v["seq"], "اسم رب الأسرة": old_v["name"], card_col_name: card,
+                    "الأفراد الكلية": new_v["total"], "الأفراد المستحقة": new_v["eligible"], "الأفراد المحجوبين": new_v["withheld"],
+                    "meta_status": "normal", "meta_sort": 1
                 })
                 
         elif card in old_data and card not in new_data:
             old_v = old_data[card]
             counters["deleted_fam"] += 1
-            counters["dec_total"] += old_v["total"]; counters["net_total"] -= old_v["total"]
-            counters["dec_eligible"] += old_v["eligible"]; counters["net_eligible"] -= old_v["eligible"]
-            counters["dec_withheld"] += old_v["withheld"]; counters["net_withheld"] -= old_v["withheld"]
+            counters["dec_total"] += old_v["total"]
+            counters["net_total"] -= old_v["total"]
+            counters["dec_eligible"] += old_v["eligible"]
+            counters["net_eligible"] -= old_v["eligible"]
+            counters["dec_withheld"] += old_v["withheld"]
+            counters["net_withheld"] -= old_v["withheld"]
             
-            results.append({
-                "card": card, "seq_orig": old_v["seq"], "card_old": old_v["old_card"],
-                "name": old_v["name"], "total": old_v["total"], "eligible": old_v["eligible"],
-                "withheld": old_v["withheld"], "status": "deleted"
-            })
+            base_row = {"التسلسل": old_v["seq"], "اسم رب الأسرة": old_v["name"] + " (محذوف / منقول)", card_col_name: card,
+                        "الأفراد الكلية": old_v["total"], "الأفراد المستحقة": old_v["eligible"], "الأفراد المحجوبين": old_v["withheld"]}
+            results_type_1_reference.append({**base_row, "meta_status": "deleted"})
             
+            if mode == "النوع الثاني":
+                results.append({
+                    "التسلسل": old_v["seq"], "اسم رب الأسرة": old_v["name"] + " (محذوف)", card_col_name: card, "الحالة": "محذوف",
+                    "الأفراد الكلية": old_v["total"], "الأفراد المستحقة": old_v["eligible"], "الأفراد المحجوبين": old_v["withheld"],
+                    "meta_status": "deleted", "meta_card": card, "meta_sort": 1
+                })
+            else:
+                results.append({**base_row, "meta_status": "deleted", "meta_sort": 1})
+                
         elif card not in old_data and card in new_data:
             new_v = new_data[card]
             counters["added_fam"] += 1
-            counters["inc_total"] += new_v["total"]; counters["net_total"] += new_v["total"]
-            counters["inc_eligible"] += new_v["eligible"]; counters["net_eligible"] += new_v["eligible"]
-            counters["inc_withheld"] += new_v["withheld"]; counters["net_withheld"] += new_v["withheld"]
+            counters["inc_total"] += new_v["total"]
+            counters["net_total"] += new_v["total"]
+            counters["inc_eligible"] += new_v["eligible"]
+            counters["net_eligible"] += new_v["eligible"]
+            counters["inc_withheld"] += new_v["withheld"]
+            counters["net_withheld"] += new_v["withheld"]
             
-            results.append({
-                "card": card, "seq_orig": new_v["seq"], "card_old": new_v["old_card"],
-                "name": new_v["name"], "total": new_v["total"], "eligible": new_v["eligible"],
-                "withheld": new_v["withheld"], "status": "added"
-            })
-    return results, counters
+            base_row = {"التسلسل": new_v["seq"], "اسم رب الأسرة": new_v["name"] + " (مضاف حديثاً)", card_col_name: card,
+                        "الأفراد الكلية": new_v["total"], "الأفراد المستحقة": new_v["eligible"], "الأفراد المحجوبين": new_v["withheld"]}
+            results_type_1_reference.append({**base_row, "meta_status": "added"})
+            
+            if mode == "النوع الثاني":
+                results.append({
+                    "التسلسل": new_v["seq"], "اسم رب الأسرة": new_v["name"] + " (مضاف)", card_col_name: card, "الحالة": "مضاف",
+                    "الأفراد الكلية": new_v["total"], "الأفراد المستحقة": new_v["eligible"], "الأفراد المحجوبين": new_v["withheld"],
+                    "meta_status": "added", "meta_card": card, "meta_sort": 1
+                })
+            else:
+                results.append({**base_row, "meta_status": "added", "meta_sort": 1})
+                
+    return results, results_type_1_reference, counters
 
 # -----------------------------------------------------------------------------
-# منشئ PDF الاحترافي (محدث ومحمي من أخطاء الخطوط ومتوافق مع خيار البطاقة)
+# 4. دوال التظليل البصري
 # -----------------------------------------------------------------------------
-def create_advanced_pdf_report(results, title, counters, new_data, card_choice):
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=20, bottomMargin=20)
-    story = []
-    
-    font_name = 'Helvetica'
-    font_path = "arial.ttf"
-    if os.path.exists("C:\\Windows\\Fonts\\arial.ttf"):
-        font_path = "C:\\Windows\\Fonts\\arial.ttf"
+def style_type_one_and_three(df, old_data, new_data, card_col_name):
+    styles = pd.DataFrame('', index=df.index, columns=df.columns)
+    for idx, row in df.iterrows():
+        status = row["meta_status"]
+        card = row[card_col_name]
         
-    try:
-        if os.path.exists(font_path):
-            pdfmetrics.registerFont(TTFont('ArabicFont', font_path))
-            font_name = 'ArabicFont'
-    except Exception:
-        pass
-    
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle('TitleStyle', fontName=font_name, fontSize=18, alignment=1, textColor=colors.HexColor('#1A365D'), spaceAfter=20)
-    cell_style = ParagraphStyle('CellStyle', fontName=font_name, fontSize=13, alignment=1, textColor=colors.black)
-    header_style = ParagraphStyle('HeaderStyle', fontName=font_name, fontSize=14, alignment=1, textColor=colors.black)
-    
-    # تحديد عنوان حقل البطاقة بناءً على الخيار
-    card_title = "البطاقة القديم" if "القديم" in card_choice else "البطاقة الحديث"
-    headers = ["ت", card_title, "اسم رب الاسرة", "التسلسل الاصلي", "الكلي", "المستحق", "المحجوب", "ملاحظة"]
-    reversed_headers = headers[::-1]
-    
-    table_data = [[Paragraph(fix_arabic(h), header_style) for h in reversed_headers]]
-    
-    for idx, r in enumerate(results, start=1):
-        status_txt = ""
-        if r["status"] == "added": status_txt = "مضاف حديثا"
-        elif r["status"] == "deleted": status_txt = "محذوف"
-        else: status_txt = "معدل"
+        if status == "modified":
+            if card in old_data and card in new_data:
+                if old_data[card]["total"] != new_data[card]["total"]: 
+                    styles.loc[idx, "الأفراد الكلية"] = 'background-color: #FFE082; font-weight: bold; color: #795548;'
+                if old_data[card]["eligible"] != new_data[card]["eligible"]: 
+                    styles.loc[idx, "الأفراد المستحقة"] = 'background-color: #FFE082; font-weight: bold; color: #795548;'
+                if old_data[card]["withheld"] != new_data[card]["withheld"]: 
+                    styles.loc[idx, "الأفراد المحجوبين"] = 'background-color: #FFE082; font-weight: bold; color: #795548;'
+        elif status == "added": styles.loc[idx] = 'background-color: #E8F5E9; color: #2E7D32;'
+        elif status == "deleted": styles.loc[idx] = 'background-color: #ECEFF1; color: #455A64; text-decoration: line-through;'
+    return styles
+
+def style_type_two(df, old_data, new_data):
+    styles = pd.DataFrame('', index=df.index, columns=df.columns)
+    for idx, row in df.iterrows():
+        status = row.get("meta_status", "")
+        card = row.get("meta_card", "")
         
-        # اختيار رقم البطاقة المطلوب
-        chosen_card = str(r["card_old"]) if "القديم" in card_choice else str(r["card"])
-        
-        row_data = [
-            str(idx), chosen_card, r["name"], str(r["seq_orig"]), 
-            str(r["total"]), str(r["eligible"]), str(r["withheld"]), status_txt
-        ]
-        row_cells = [Paragraph(fix_arabic(cell), cell_style) for cell in row_data[::-1]]
-        table_data.append(row_cells)
-        
-    col_widths = [70, 60, 60, 60, 90, 200, 100, 40]
-    
-    t = Table(table_data, colWidths=col_widths, repeatRows=1)
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#EAECEE')),
-        ('BACKGROUND', (4, 1), (4, -1), colors.HexColor('#FEF9E7')),
-        ('BACKGROUND', (3, 1), (3, -1), colors.HexColor('#EBF5FB')),
-        ('BACKGROUND', (2, 1), (2, -1), colors.HexColor('#E8F8F5')),
-        ('BACKGROUND', (1, 1), (1, -1), colors.HexColor('#FDEDEC')),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#BDC3C7')),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ('TOPPADDING', (0, 0), (-1, -1), 8),
-    ]))
-    
-    story.append(Paragraph(fix_arabic(title), title_style))
-    story.append(t)
-    
-    doc.build(story)
-    buffer.seek(0)
-    return buffer
+        if status == "type2_old": styles.loc[idx, "الحالة"] = 'background-color: #F5F5F5; font-weight: bold; color: #7F8C8D;'
+        elif status == "type2_new": styles.loc[idx, "الحالة"] = 'background-color: #E8F8F5; font-weight: bold; color: #16A085;'
+            
+        if status in ["type2_old", "type2_new"] and card in old_data and card in new_data:
+            o_val, n_val = old_data[card], new_data[card]
+            if o_val["total"] != n_val["total"]: styles.loc[idx, "الأفراد الكلية"] = 'background-color: #FDE0DC; font-weight: bold; color: #C0392B;'
+            if o_val["eligible"] != n_val["eligible"]: styles.loc[idx, "الأفراد المستحقة"] = 'background-color: #FDE0DC; font-weight: bold; color: #C0392B;'
+            if o_val["withheld"] != n_val["withheld"]: styles.loc[idx, "الأفراد المحجوبين"] = 'background-color: #FDE0DC; font-weight: bold; color: #C0392B;'
+    return styles
 
 # -----------------------------------------------------------------------------
-# منشئ Word الاحترافي (متوافق مع خيار البطاقة)
+# 5. دوال تصدير مستندات Word
 # -----------------------------------------------------------------------------
-def create_advanced_word_report(results, title, counters, new_data, card_choice):
+def set_cell_shading(cell, color_hex):
+    tcPr = cell._tc.get_or_add_tcPr()
+    shd = parse_xml(f'<w:shd {nsdecls("w")} fill="{color_hex}"/>')
+    tcPr.append(shd)
+
+def create_word_table_report(df, title, mode, card_col_name, old_data=None, new_data=None):
     doc = Document()
-    style = doc.styles['Normal']
-    style.font.name = 'Arial'
-    style.font.size = Pt(16)
-    
     heading = doc.add_heading(title, level=1)
     heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    doc.add_paragraph()
     
-    card_title = "رقم البطاقة القديم" if "القديم" in card_choice else "رقم البطاقة الحديث"
-    headers = ["ت", card_title, "اسم رب الاسرة", "التسلسل الاصلي", "الكلي", "المستحق", "المحجوب", " "]
+    display_df = df.drop(columns=["meta_status", "meta_card", "meta_sort"], errors="ignore")
+    cols = list(display_df.columns)[::-1]
     
-    table = doc.add_table(rows=1, cols=8)
+    table = doc.add_table(rows=1, cols=len(cols))
     table.style = 'Table Grid'
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     
-    hdr_row = table.rows[0]
-    repeat_header_row(hdr_row)
-    hdr_cells = hdr_row.cells
-    
-    for i, text in enumerate(headers):
-        hdr_cells[i].text = text
-        p = hdr_cells[i].paragraphs[0]
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        for run in p.runs:
-            run.font.bold = True
-            run.font.size = Pt(16)
-            
-        if i == 0: set_cell_shading(hdr_cells[i], "EAECEE")
-        elif i == 2: hdr_cells[i].width = Cm(5)
-        elif i == 3: set_cell_shading(hdr_cells[i], "FEF9E7")
-        elif i == 4: 
-            set_cell_shading(hdr_cells[i], "EBF5FB")
-            set_cell_rotation(hdr_cells[i])
-        elif i == 5: 
-            set_cell_shading(hdr_cells[i], "E8F8F5")
-            set_cell_rotation(hdr_cells[i])
-        elif i == 6: 
-            set_cell_shading(hdr_cells[i], "FDEDEC")
-            set_cell_rotation(hdr_cells[i])
-        elif i == 7: hdr_cells[i].width = Cm(1)
-
-    for idx, r in enumerate(results, start=1):
+    for i, col in enumerate(cols):
+        table.rows[0].cells[i].text = str(col)
+        table.rows[0].cells[i].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+    prev_cells = None
+    for idx, row in df.iterrows():
         row_cells = table.add_row().cells
-        row_cells[0].text = str(idx)
-        set_cell_shading(row_cells[0], "EAECEE")
+        status = row.get("meta_status", "normal")
+        card = row.get("meta_card") if mode == "النوع الثاني" else row.get(card_col_name)
         
-        # اختيار رقم البطاقة المطلوب
-        row_cells[1].text = str(r["card_old"]) if "القديم" in card_choice else str(r["card"])
-        
-        row_cells[2].width = Cm(5)
-        p_name = row_cells[2].paragraphs[0]
-        p_name.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        run_n = p_name.add_run(r["name"] + " ")
-        run_n.font.size = Pt(16)
-        
-        if r["status"] == "added":
-            run_status = p_name.add_run("(مضاف حديثا)")
-            run_status.font.color.rgb = RGBColor(39, 174, 96)
-            run_status.font.bold = True
-            run_status.font.size = Pt(16)
-        elif r["status"] == "deleted":
-            run_status = p_name.add_run("(المحذوف)")
-            run_status.font.color.rgb = RGBColor(192, 57, 43)
-            run_status.font.bold = True
-            run_status.font.size = Pt(16)
+        for i, col in enumerate(cols):
+            row_cells[i].text = str(row[col]) if pd.notna(row[col]) and row[col] != "" else ""
+            row_cells[i].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
             
-        row_cells[3].text = str(r["seq_orig"])
-        set_cell_shading(row_cells[3], "FEF9E7")
-        row_cells[4].text = str(r["total"])
-        set_cell_shading(row_cells[4], "EBF5FB")
-        set_cell_rotation(row_cells[4])
-        row_cells[5].text = str(r["eligible"])
-        set_cell_shading(row_cells[5], "E8F8F5")
-        set_cell_rotation(row_cells[5])
-        row_cells[6].text = str(r["withheld"])
-        set_cell_shading(row_cells[6], "FDEDEC")
-        set_cell_rotation(row_cells[6])
-        row_cells[7].text = ""
-        row_cells[7].width = Cm(1)
-        
-        for i in range(8):
-            if i == 2: continue
-            p = row_cells[i].paragraphs[0]
-            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            for run in p.runs:
-                run.font.size = Pt(16)
-                run.font.name = 'Arial'
+            if mode == "النوع الثاني":
+                if col == "الحالة":
+                    if status == "type2_old": set_cell_shading(row_cells[i], "F5F5F5")
+                    elif status == "type2_new": set_cell_shading(row_cells[i], "E8F8F5")
+                if status in ["type2_old", "type2_new"] and old_data and new_data and card in old_data and card in new_data:
+                    if col == "الأفراد الكلية" and old_data[card]["total"] != new_data[card]["total"]: set_cell_shading(row_cells[i], "FDE0DC")
+                    if col == "الأفراد المستحقة" and old_data[card]["eligible"] != new_data[card]["eligible"]: set_cell_shading(row_cells[i], "FDE0DC")
+                    if col == "الأفراد المحجوبين" and old_data[card]["withheld"] != new_data[card]["withheld"]: set_cell_shading(row_cells[i], "FDE0DC")
+            else:
+                if status == "modified" and old_data and new_data and card in old_data and card in new_data:
+                    if col == "الأفراد الكلية" and old_data[card]["total"] != new_data[card]["total"]: set_cell_shading(row_cells[i], "FFE082")
+                    if col == "الأفراد المستحقة" and old_data[card]["eligible"] != new_data[card]["eligible"]: set_cell_shading(row_cells[i], "FFE082")
+                    if col == "الأفراد المحجوبين" and old_data[card]["withheld"] != new_data[card]["withheld"]: set_cell_shading(row_cells[i], "FFE082")
+                elif status == "added": set_cell_shading(row_cells[i], "E8F5E9")
+                elif status == "deleted": set_cell_shading(row_cells[i], "ECEFF1")
 
-    total_new_sum = sum(rec["total"] for rec in new_data.values())
-    eligible_new_sum = sum(rec["eligible"] for rec in new_data.values())
-    withheld_new_sum = sum(rec["withheld"] for rec in new_data.values())
-    net_tot = counters["net_total"]
-    net_elg = counters["net_eligible"]
-    net_wth = counters["net_withheld"]
-    
-    def format_diff_text(val):
-        if val > 0: return f"زادت عن الملف الاصلي بمقدار {val} فرد"
-        elif val < 0: return f"نقصت عن الملف الاصلي بمقدار {abs(val)} فرد"
-        else: return "بقيت مطابقة للملف الأصلي دون تغيير"
-
-    doc.add_paragraph().add_run().add_break()
-    p_sum = doc.add_paragraph()
-    p_sum.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    
-    r_sum = p_sum.add_run(
-        f"📊 الحسابات والإحصاء التجميعي:\n"
-        f"▪️ الافراد الكلية = {total_new_sum} فرد ({format_diff_text(net_tot)})\n"
-        f"▪️ الافراد المستحقة = {eligible_new_sum} فرد ({format_diff_text(net_elg)})\n"
-        f"▪️ الافراد المحجوبة = {withheld_new_sum} فرد ({format_diff_text(net_wth)})"
-    )
-    r_sum.font.size = Pt(16)
-    r_sum.font.bold = True
-    
+        if mode == "النوع الثاني":
+            if status == "type2_old": prev_cells = row_cells
+            elif status == "type2_new" and prev_cells:
+                for merge_col in ["التسلسل", "اسم رب الأسرة", card_col_name]:
+                    if merge_col in cols:
+                        m_idx = cols.index(merge_col)
+                        prev_cells[m_idx].merge(row_cells[m_idx])
+                        row_cells[m_idx].text = ""
+                
     buffer = BytesIO()
     doc.save(buffer)
     buffer.seek(0)
@@ -438,221 +367,132 @@ def create_advanced_word_report(results, title, counters, new_data, card_choice)
 
 def create_word_stats_report(counters, filename_base):
     doc = Document()
-    heading = doc.add_heading(f"تقرير الإحصاء الإداري لشهر - {filename_base}", level=1)
-    heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    doc.add_paragraph().add_run().add_break()
-    
-    p_title2 = doc.add_paragraph()
-    p_title2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    p_title2.add_run("حركة القيود والعوائل (إداري)").bold = True
-    
-    stats_families = [
-        ("عوائل تغيرت أعداد أفرادها الكلية:", counters['total_fam']),
-        ("عوائل تغيرت أعداد أفرادها المستحقة:", counters['eligible_fam']),
-        ("عوائل تغيرت أعداد أفرادها المحجوبين:", counters['withheld_fam']),
-        ("عوائل جديدة تمت إضافتها بالكامل:", counters['added_fam']),
-        ("عوائل تم نقلها أو حذفها بالكامل:", counters['deleted_fam'])
+    doc.add_heading(f"تقرير الإحصاء - {filename_base}", level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph().add_run("أولاً: إحصاء حركة الأفراد").bold = True
+    stats_individuals = [
+        ("زيادة الكلية:", f"+{counters['inc_total']}"), ("نقصان الكلية:", f"-{counters['dec_total']}"), ("صافي الكلية:", f"{counters['net_total']:+d}"),
+        ("زيادة المستحقة:", f"+{counters['inc_eligible']}"), ("نقصان المستحقة:", f"-{counters['dec_eligible']}"), ("صافي المستحقة:", f"{counters['net_eligible']:+d}"),
+        ("زيادة المحجوبين:", f"+{counters['inc_withheld']}"), ("نقصان المحجوبين:", f"-{counters['dec_withheld']}"), ("صافي المحجوبين:", f"{counters['net_withheld']:+d}")
     ]
-    for text, val in stats_families:
-        p = doc.add_paragraph()
-        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        p.add_run(f" {val} ").bold = True
-        p.add_run(f" : {text}")
-        
+    for text, val in stats_individuals: doc.add_paragraph().add_run(f"{val} : {text}").alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    doc.add_paragraph().add_run("ثانياً: العوائل").bold = True
+    stats_families = [
+        ("تغيرت الكلية:", counters['total_fam']), ("تغيرت المستحقة:", counters['eligible_fam']),
+        ("تغيرت المحجوبين:", counters['withheld_fam']), ("عوائل مضافة:", counters['added_fam']), ("عوائل محذوفة:", counters['deleted_fam'])
+    ]
+    for text, val in stats_families: doc.add_paragraph().add_run(f"{val} : {text}").alignment = WD_ALIGN_PARAGRAPH.RIGHT
     buffer = BytesIO()
     doc.save(buffer)
     buffer.seek(0)
     return buffer
 
 # -----------------------------------------------------------------------------
-# إدارة حالة المتصفح (Session State)
+# 6. الواجهة الرئيسية والتفاعل
 # -----------------------------------------------------------------------------
-if 'app_state' not in st.session_state:
-    st.session_state.app_state = None
+st.markdown("<h3 style='text-align: right;'>📂 منطقة الرفع والمطابقة</h3>", unsafe_allow_html=True)
 
-if st.session_state.app_state is not None:
-    st.markdown("<hr>", unsafe_allow_html=True)
-    if st.button("🔄 تصفير النظام وبدء مقارنة ملفات جديدة (اضغط هنا)", type="primary"):
-        st.session_state.app_state = None
-        st.rerun()
+uploaded_files = st.file_uploader("ارفع ملفي الشهر السابق والحالي معاً", type=['docx'], accept_multiple_files=True)
 
-# -----------------------------------------------------------------------------
-# الواجهة الرئيسية (رفع الملفات المتكامل)
-# -----------------------------------------------------------------------------
-if st.session_state.app_state is None:
-    st.markdown("<h3 style='text-align: right;'>📂 ارفع ملفي الشهرين معاً (وسيقوم النظام بتصنيفها تلقائياً حسب التاريخ)</h3>", unsafe_allow_html=True)
-    
-    uploaded_files = st.file_uploader("قم بتحديد أو سحب الملفين هنا", type=['docx'], accept_multiple_files=True)
-    
-    old_file_determined, new_file_determined = None, None
-    old_date_str, new_date_str = "", ""
-    
-    if uploaded_files:
-        if len(uploaded_files) == 2:
-            file1, file2 = uploaded_files
-            date1, str1 = extract_document_date(file1)
-            date2, str2 = extract_document_date(file2)
+col_opts1, col_opts2 = st.columns(2)
+with col_opts1:
+    comparison_mode = st.radio(
+        "🎯 نوع المقارنة:",
+        ["النوع الأول", "النوع الثاني", "النوع الثالث"],
+        format_func=lambda x: {"النوع الأول": "عرض التغييرات فقط", "النوع الثاني": "صفين لكل عائلة (مقارنة تفصيلية)", "النوع الثالث": "عرض كافة السجلات"}[x],
+        horizontal=True
+    )
+with col_opts2:
+    card_choice_ui = st.radio(
+        "💳 البطاقة المعتمدة كمرجع:", 
+        ["رقم البطاقة القديم", "رقم البطاقة الحديث"], 
+        horizontal=True
+    )
+
+card_type_param = "old" if card_choice_ui == "رقم البطاقة القديم" else "new"
+card_col_name = card_choice_ui
+
+swap_files = st.checkbox("🔄 **عكس الملفين يدوياً (القديم يصبح حديثاً والحديث قديماً)** - استخدمه إذا كان الترتيب غير صحيح")
+
+grid_column_configuration = {
+    "التسلسل": st.column_config.TextColumn("التسلسل", width="small"),
+    "اسم رب الأسرة": st.column_config.TextColumn("اسم رب الأسرة", width="large"),
+    card_col_name: st.column_config.TextColumn(card_col_name, width="medium"),
+    "الحالة": st.column_config.TextColumn("الحالة", width="small"),
+    "الأفراد الكلية": st.column_config.NumberColumn("الأفراد الكلية", width="small"),
+    "الأفراد المستحقة": st.column_config.NumberColumn("الأفراد المستحقة", width="small"),
+    "الأفراد المحجوبين": st.column_config.NumberColumn("الأفراد المحجوبين", width="small")
+}
+
+if st.button("بدء المقارنة الذكية واستخراج المتغيرات"):
+    if len(uploaded_files) == 2:
+        with st.spinner('جاري التحليل...'):
+            doc1 = Document(uploaded_files[0])
+            doc2 = Document(uploaded_files[1])
             
+            date1 = extract_document_date(doc1)
+            date2 = extract_document_date(doc2)
+            
+            file_a_is_older = True
             if date1 and date2:
-                if date1 > date2:
-                    new_file_determined, old_file_determined = file1, file2
-                    new_date_str, old_date_str = str1, str2
-                else:
-                    new_file_determined, old_file_determined = file2, file1
-                    new_date_str, old_date_str = str2, str1
-                    
-                st.markdown(f"""
-                <div class='auto-detect-box' dir='rtl'>
-                    ✅ تم التعرف على التواريخ بنجاح!<br>
-                    📄 <b>الملف القديم:</b> {old_file_determined.name} (تاريخه: {old_date_str})<br>
-                    📄 <b>الملف الجديد:</b> {new_file_determined.name} (تاريخه: {new_date_str})
-                </div>
-                <br>
-                """, unsafe_allow_html=True)
-            else:
-                st.warning("⚠️ لم يتمكن النظام من العثور على تواريخ في أسفل أحد الملفين، سيتم الاعتماد على ترتيب الرفع كحل بديل.")
-                old_file_determined, new_file_determined = file1, file2
-                
-        elif len(uploaded_files) > 2:
-            st.error("❌ يرجى رفع ملفين فقط.")
-        else:
-            st.info("⏳ بانتظار رفع الملف الثاني...")
-
-    # إضافة خيار التقرير
-    st.markdown("<h3 style='text-align: right; margin-top: 20px;'>⚙️ إعدادات التقرير النهائي</h3>", unsafe_allow_html=True)
-    card_choice = st.radio("اختر نوع رقم البطاقة المراد إظهاره في الجداول والتقارير:", 
-                           options=["رقم البطاقة القديم", "رقم البطاقة الحديث (الجديد)"], 
-                           horizontal=True)
-
-    if st.button("بدء المقارنة الدقيقة وتوليد التقارير"):
-        if old_file_determined and new_file_determined:
-            with st.spinner('جاري قراءة الملفات ومطابقة القيود وتوليد الجداول...'):
-                old_data = extract_clean_records(old_file_determined)
-                new_data = extract_clean_records(new_file_determined)
-                results, counters = compare_records(old_data, new_data)
-                
-                st.session_state.app_state = {
-                    "results": sorted(results, key=lambda x: str(x.get("name", ""))),
-                    "counters": counters,
-                    "old_data": old_data,
-                    "new_data": new_data,
-                    "base_name": new_file_determined.name.rsplit('.', 1)[0],
-                    "card_choice": card_choice
-                }
-                st.rerun()
-        else:
-            st.warning("يرجى رفع الملفين أولاً.")
-
-# -----------------------------------------------------------------------------
-# عرض النتائج المحفوظة
-# -----------------------------------------------------------------------------
-if st.session_state.app_state is not None:
-    state = st.session_state.app_state
-    results = state["results"]
-    counters = state["counters"]
-    old_data = state["old_data"]
-    new_data = state["new_data"]
-    base_name = state["base_name"]
-    card_choice = state["card_choice"]
-
-    if results:
-        # الإحصائيات
-        st.markdown("<h3 style='text-align: right; margin-top: 10px;'>📊 إحصائية الفروقات الحركية للأفراد</h3>", unsafe_allow_html=True)
-        c1, c2, c3, c4 = st.columns(4)
-        with c1: 
-            st.markdown(f"""<div class='report-box'>
-                حركة الكلية<br><h2>{counters['total_fam']} عائلة</h2>
-                <div class='stat-inc'>مضافة: +{counters['inc_total']}</div>
-                <div class='stat-dec'>محذوف: -{counters['dec_total']}</div>
-                <div class='net-diff'>الصافي: {counters['net_total']:+d}</div>
-            </div>""", unsafe_allow_html=True)
-        with c2: 
-            st.markdown(f"""<div class='report-box'>
-                حركة المستحقة<br><h2>{counters['eligible_fam']} عائلة</h2>
-                <div class='stat-inc'>مضافة: +{counters['inc_eligible']}</div>
-                <div class='stat-dec'>محذوف: -{counters['dec_eligible']}</div>
-                <div class='net-diff'>الصافي: {counters['net_eligible']:+d}</div>
-            </div>""", unsafe_allow_html=True)
-        with c3: 
-            st.markdown(f"""<div class='report-box'>
-                حركة المحجوبين<br><h2>{counters['withheld_fam']} عائلة</h2>
-                <div class='stat-inc'>مضافة: +{counters['inc_withheld']}</div>
-                <div class='stat-dec'>محذوف: -{counters['dec_withheld']}</div>
-                <div class='net-diff'>الصافي: {counters['net_withheld']:+d}</div>
-            </div>""", unsafe_allow_html=True)
-        with c4: 
-            st.markdown(f"""<div class='report-box'>
-                إضافة/حذف عوائل<br><h2>{counters['added_fam'] + counters['deleted_fam']} عائلة</h2>
-                <div class='stat-inc'>تمت إضافتها: +{counters['added_fam']}</div>
-                <div class='stat-dec'>تم حذفها: -{counters['deleted_fam']}</div>
-                <div class='net-diff'>حركة السجلات</div>
-            </div>""", unsafe_allow_html=True)
-
-        st.markdown(f"<h3 style='text-align: right; color: #2C3E50; margin-top: 20px;'>📋 تفاصيل الأسماء المتغيرة (معتمدة على: {card_choice})</h3>", unsafe_allow_html=True)
-        
-        for r in results:
-            card = r["card"]
-            old_v = old_data.get(card, {"total": "-", "eligible": "-", "withheld": "-"})
-            new_v = new_data.get(card, {"total": "-", "eligible": "-", "withheld": "-"})
+                file_a_is_older = date1 < date2
             
-            if r["status"] == "added":
-                status_icon = "🟢 مضاف حديثاً"
-            elif r["status"] == "deleted":
-                status_icon = "🔴 محذوف من السجل"
+            if swap_files:
+                file_a_is_older = not file_a_is_older
+                
+            if file_a_is_older:
+                old_doc, new_doc = doc1, doc2
+                old_name, new_name = uploaded_files[0].name, uploaded_files[1].name
             else:
-                status_icon = "🟡 تعديل في الأفراد"
-                
-            chosen_card_display = r["card_old"] if "القديم" in card_choice else r["card"]
-                
-            with st.expander(f"{status_icon} | {r['name']} | بطاقة: {chosen_card_display}"):
-                st.markdown(f"""
-                <table class='compare-table' dir='rtl'>
-                    <tr>
-                        <th style='width: 33%;'>الحقل</th>
-                        <th style='width: 33%;'>في الشهر السابق (القديم)</th>
-                        <th style='width: 33%;'>في الشهر الحالي (الجديد)</th>
-                    </tr>
-                    <tr>
-                        <td><b>الأفراد الكلية</b></td>
-                        <td>{old_v['total']}</td>
-                        <td>{new_v['total']}</td>
-                    </tr>
-                    <tr>
-                        <td><b>الأفراد المستحقة</b></td>
-                        <td>{old_v['eligible']}</td>
-                        <td>{new_v['eligible']}</td>
-                    </tr>
-                    <tr>
-                        <td><b>الأفراد المحجوبين</b></td>
-                        <td>{old_v['withheld']}</td>
-                        <td>{new_v['withheld']}</td>
-                    </tr>
-                </table>
-                """, unsafe_allow_html=True)
+                old_doc, new_doc = doc2, doc1
+                old_name, new_name = uploaded_files[1].name, uploaded_files[0].name
 
-        st.markdown("<hr>", unsafe_allow_html=True)
-        col_dl1, col_dl2 = st.columns(2)
-        with col_dl1:
-            if LIBS_READY:
-                pdf_report = create_advanced_pdf_report(results, f"تقرير المتغيرات النهائي - {base_name}", counters, new_data, card_choice)
-                st.download_button(
-                    label="📥 تحميل تقرير PDF مباشر وجاهز",
-                    data=pdf_report,
-                    file_name=f"متغيرات_PDF_{base_name}.pdf",
-                    mime="application/pdf",
-                )
-                
-                word_report = create_advanced_word_report(results, f"جدول متغيرات - {base_name}", counters, new_data, card_choice)
-                st.download_button(
-                    label="📥 تحميل تقرير Word منسق",
-                    data=word_report,
-                    file_name=f"تقرير_المتغيرات_{base_name}.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                )
-            else:
-                st.error("مكتبات الـ PDF غير مكتملة على الخادم. راجع المكتبات.")
-        with col_dl2:
-            st.info("💡 تم حفظ بياناتك محلياً في المتصفح. لتدقيق وكيل آخر، اضغط على زر 'التصفير' باللون الأحمر في الأعلى.")
+            st.markdown(f"<div class='date-badge'>الملف المعتمد كـ <span class='old'>السابق: ({old_name})</span> | الملف المعتمد كـ <span class='new'>الحديث: ({new_name})</span></div>", unsafe_allow_html=True)
             
+            # تمرير خيار نوع البطاقة لدالة الاستخراج
+            old_data = extract_clean_records(old_doc, card_type=card_type_param)
+            new_data = extract_clean_records(new_doc, card_type=card_type_param)
+            
+            results, results_ref, counters = process_comparison(old_data, new_data, comparison_mode, card_col_name)
+            
+            if results:
+                results = sorted(results, key=lambda x: (str(x.get("اسم رب الأسرة", "")), x.get("meta_sort", 0)))
+                results_ref = sorted(results_ref, key=lambda x: str(x.get("اسم رب الأسرة", "")))
+                
+                df_results = pd.DataFrame(results)
+                
+                if comparison_mode == "النوع الثاني":
+                    for idx, row in df_results.iterrows():
+                        if row.get("meta_status") == "type2_new":
+                            df_results.at[idx, "التسلسل"] = ""
+                            df_results.at[idx, "اسم رب الأسرة"] = ""
+                            df_results.at[idx, card_col_name] = ""
+                
+                st.markdown(f"<h3 style='text-align: right;'>📋 المخرجات ({comparison_mode})</h3>", unsafe_allow_html=True)
+                
+                if comparison_mode == "النوع الثالث" or comparison_mode == "النوع الأول":
+                    styled_df = df_results.style.apply(lambda d: style_type_one_and_three(d, old_data, new_data, card_col_name), axis=None)
+                    cols_order = ["التسلسل", "اسم رب الأسرة", card_col_name, "الأفراد الكلية", "الأفراد المستحقة", "الأفراد المحجوبين"]
+                    st.dataframe(styled_df, use_container_width=True, hide_index=True, column_order=cols_order, column_config=grid_column_configuration)
+                elif comparison_mode == "النوع الثاني":
+                    styled_df = df_results.style.apply(lambda d: style_type_two(d, old_data, new_data), axis=None)
+                    cols_order = ["التسلسل", "اسم رب الأسرة", card_col_name, "الحالة", "الأفراد الكلية", "الأفراد المستحقة", "الأفراد المحجوبين"]
+                    st.dataframe(styled_df, use_container_width=True, hide_index=True, column_order=cols_order, column_config=grid_column_configuration)
+                
+                base_name = new_name.rsplit('.', 1)[0]
+                col_dl1, col_dl2 = st.columns(2)
+                with col_dl1:
+                    word_report = create_word_table_report(df_results, f"تقرير - {comparison_mode}", comparison_mode, card_col_name, old_data, new_data)
+                    st.download_button(label="📥 تحميل المخرجات Word", data=word_report, file_name=f"تقرير_{base_name}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                with col_dl2:
+                    word_stats = create_word_stats_report(counters, base_name)
+                    st.download_button(label="📊 تحميل تقرير الإحصاء Word", data=word_stats, file_name=f"احصائيات_{base_name}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                
+                st.markdown("---")
+                st.markdown(f"<h3 style='text-align: right; color: #7F8C8D;'>📌 الجدول المرجعي الثابت (يعتمد على: {card_col_name})</h3>", unsafe_allow_html=True)
+                df_ref = pd.DataFrame(results_ref)
+                cols_order_ref = ["التسلسل", "اسم رب الأسرة", card_col_name, "الأفراد الكلية", "الأفراد المستحقة", "الأفراد المحجوبين"]
+                st.dataframe(df_ref, use_container_width=True, hide_index=True, column_order=cols_order_ref, column_config=grid_column_configuration)
+            else:
+                st.success("🎉 تطابق تام! لا توجد فروقات بين الملفين.")
     else:
-        st.success("🎉 لا توجد فروقات أو متغيرات عددية للأفراد بين الملفين!")
+        st.warning("⚠️ يرجى رفع ملفين اثنين بالضبط للتمكن من بدء المقارنة.")
