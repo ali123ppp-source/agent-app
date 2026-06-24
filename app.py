@@ -26,7 +26,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("<h1 style='text-align: right;'>نظام المقارنة الشامل والذكي 📄🔎</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: right;'>النسخة الاحترافية: تدعم خيار التبديل بين البطاقة القديمة أو الحديثة بضغطة زر.</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: right;'>النسخة الاحترافية المستقرة: تم دمج محرك تخطي التسلسل والمطابقة المباشرة بالبطاقة التموينية بنجاح.</p>", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
 # 1. محرك الاستشعار الزمني المحسن
@@ -65,12 +65,11 @@ def extract_document_date(doc):
     return None
 
 # -----------------------------------------------------------------------------
-# 2. محرك الاستخراج الدقيق (يدعم اختيار نوع البطاقة)
+# 2. محرك الاستخراج الدقيق
 # -----------------------------------------------------------------------------
 def extract_clean_records(doc, card_type="old"):
     records = {}
     
-    # قراءة النصوص المفصولة بفواصل
     for para in doc.paragraphs:
         text = para.text.strip()
         if not text: continue
@@ -97,7 +96,6 @@ def extract_clean_records(doc, card_type="old"):
             except ValueError:
                 continue
 
-    # قراءة الجداول المعيارية
     if not records:
         for table in doc.tables:
             for row in table.rows:
@@ -138,9 +136,9 @@ def extract_clean_records(doc, card_type="old"):
     return records
 
 # -----------------------------------------------------------------------------
-# 3. محرك المقارنة المتطور
+# 3. محرك المقارنة المتطور المشترك (يدعم التبديل بين المحركين القياسي ومحرك تخطي التسلسل)
 # -----------------------------------------------------------------------------
-def process_comparison(old_data, new_data, mode, card_col_name):
+def process_comparison(old_data, new_data, mode, card_col_name, matching_engine):
     results = []
     results_type_1_reference = []
     
@@ -149,6 +147,9 @@ def process_comparison(old_data, new_data, mode, card_col_name):
         "inc_total": 0, "dec_total": 0, "net_total": 0, "inc_eligible": 0, "dec_eligible": 0, "net_eligible": 0,
         "inc_withheld": 0, "dec_withheld": 0, "net_withheld": 0
     }
+    
+    # التحقق مما إذا كان المستخدم اختار محرك تخطي التسلسل
+    skip_seq_matching = (matching_engine == "محرك تخطي التسلسل (بطاقة فقط)")
     
     all_cards = set(old_data.keys()).union(set(new_data.keys()))
     
@@ -159,6 +160,9 @@ def process_comparison(old_data, new_data, mode, card_col_name):
             diff_elig = old_v["eligible"] != new_v["eligible"]
             diff_with = old_v["withheld"] != new_v["withheld"]
             is_changed = diff_total or diff_elig or diff_with
+            
+            # تحديد التسلسل المعتمد للعرض بناءً على خيار المحرك
+            target_seq = new_v["seq"] if skip_seq_matching else old_v["seq"]
             
             if is_changed:
                 if diff_total:
@@ -181,37 +185,37 @@ def process_comparison(old_data, new_data, mode, card_col_name):
                     else: counters["dec_withheld"] += abs(diff)
                 
                 results_type_1_reference.append({
-                    "التسلسل": old_v["seq"], "اسم رب الأسرة": old_v["name"], card_col_name: card,
+                    "التسلسل": target_seq, "اسم رب الأسرة": old_v["name"], card_col_name: card,
                     "الأفراد الكلية": new_v["total"], "الأفراد المستحقة": new_v["eligible"], "الأفراد المحجوبين": new_v["withheld"],
                     "meta_status": "modified"
                 })
                 
                 if mode == "النوع الأول":
                     results.append({
-                        "التسلسل": old_v["seq"], "اسم رب الأسرة": old_v["name"], card_col_name: card,
+                        "التسلسل": target_seq, "اسم رب الأسرة": old_v["name"], card_col_name: card,
                         "الأفراد الكلية": new_v["total"], "الأفراد المستحقة": new_v["eligible"], "الأفراد المحجوبين": new_v["withheld"],
                         "meta_status": "modified", "meta_sort": 1
                     })
                 elif mode == "النوع الثاني":
                     results.append({
-                        "التسلسل": old_v["seq"], "اسم رب الأسرة": old_v["name"], card_col_name: card, "الحالة": "السابق",
+                        "التسلسل": target_seq, "اسم رب الأسرة": old_v["name"], card_col_name: card, "الحالة": "السابق",
                         "الأفراد الكلية": old_v["total"], "الأفراد المستحقة": old_v["eligible"], "الأفراد المحجوبين": old_v["withheld"],
                         "meta_status": "type2_old", "meta_card": card, "meta_sort": 1
                     })
                     results.append({
-                        "التسلسل": old_v["seq"], "اسم رب الأسرة": old_v["name"], card_col_name: card, "الحالة": "الحديث",
+                        "التسلسل": target_seq, "اسم رب الأسرة": old_v["name"], card_col_name: card, "الحالة": "الحديث",
                         "الأفراد الكلية": new_v["total"], "الأفراد المستحقة": new_v["eligible"], "الأفراد المحجوبين": new_v["withheld"],
                         "meta_status": "type2_new", "meta_card": card, "meta_sort": 2
                     })
                 elif mode == "النوع الثالث":
                     results.append({
-                        "التسلسل": old_v["seq"], "اسم رب الأسرة": old_v["name"], card_col_name: card,
+                        "التسلسل": target_seq, "اسم رب الأسرة": old_v["name"], card_col_name: card,
                         "الأفراد الكلية": new_v["total"], "الأفراد المستحقة": new_v["eligible"], "الأفراد المحجوبين": new_v["withheld"],
                         "meta_status": "modified", "meta_sort": 1
                     })
             elif mode == "النوع الثالث":
                 results.append({
-                    "التسلسل": old_v["seq"], "اسم رب الأسرة": old_v["name"], card_col_name: card,
+                    "التسلسل": target_seq, "اسم رب الأسرة": old_v["name"], card_col_name: card,
                     "الأفراد الكلية": new_v["total"], "الأفراد المستحقة": new_v["eligible"], "الأفراد المحجوبين": new_v["withheld"],
                     "meta_status": "normal", "meta_sort": 1
                 })
@@ -267,9 +271,9 @@ def process_comparison(old_data, new_data, mode, card_col_name):
 # -----------------------------------------------------------------------------
 # 4. دوال التظليل البصري
 # -----------------------------------------------------------------------------
-def style_type_one_and_three(df, old_data, new_data, card_col_name):
-    styles = pd.DataFrame('', index=df.index, columns=df.columns)
-    for idx, row in df.iterrows():
+def style_type_one_and_three(doc_df, old_data, new_data, card_col_name):
+    styles = pd.DataFrame('', index=doc_df.index, columns=doc_df.columns)
+    for idx, row in doc_df.iterrows():
         status = row["meta_status"]
         card = row[card_col_name]
         
@@ -285,9 +289,9 @@ def style_type_one_and_three(df, old_data, new_data, card_col_name):
         elif status == "deleted": styles.loc[idx] = 'background-color: #ECEFF1; color: #455A64; text-decoration: line-through;'
     return styles
 
-def style_type_two(df, old_data, new_data):
-    styles = pd.DataFrame('', index=df.index, columns=df.columns)
-    for idx, row in df.iterrows():
+def style_type_two(doc_df, old_data, new_data):
+    styles = pd.DataFrame('', index=doc_df.index, columns=doc_df.columns)
+    for idx, row in doc_df.iterrows():
         status = row.get("meta_status", "")
         card = row.get("meta_card", "")
         
@@ -309,12 +313,12 @@ def set_cell_shading(cell, color_hex):
     shd = parse_xml(f'<w:shd {nsdecls("w")} fill="{color_hex}"/>')
     tcPr.append(shd)
 
-def create_word_table_report(df, title, mode, card_col_name, old_data=None, new_data=None):
+def create_word_table_report(doc_df, title, mode, card_col_name, old_data=None, new_data=None):
     doc = Document()
     heading = doc.add_heading(title, level=1)
     heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
     
-    display_df = df.drop(columns=["meta_status", "meta_card", "meta_sort"], errors="ignore")
+    display_df = doc_df.drop(columns=["meta_status", "meta_card", "meta_sort"], errors="ignore")
     cols = list(display_df.columns)[::-1]
     
     table = doc.add_table(rows=1, cols=len(cols))
@@ -326,7 +330,7 @@ def create_word_table_report(df, title, mode, card_col_name, old_data=None, new_
         table.rows[0].cells[i].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
         
     prev_cells = None
-    for idx, row in df.iterrows():
+    for idx, row in doc_df.iterrows():
         row_cells = table.add_row().cells
         status = row.get("meta_status", "normal")
         card = row.get("meta_card") if mode == "النوع الثاني" else row.get(card_col_name)
@@ -393,7 +397,7 @@ st.markdown("<h3 style='text-align: right;'>📂 منطقة الرفع والم�
 
 uploaded_files = st.file_uploader("ارفع ملفي الشهر السابق والحالي معاً", type=['docx'], accept_multiple_files=True)
 
-col_opts1, col_opts2 = st.columns(2)
+col_opts1, col_opts2, col_opts3 = st.columns(3)
 with col_opts1:
     comparison_mode = st.radio(
         "🎯 نوع المقارنة:",
@@ -407,11 +411,17 @@ with col_opts2:
         ["رقم البطاقة القديم", "رقم البطاقة الحديث"], 
         horizontal=True
     )
+with col_opts3:
+    matching_engine = st.radio(
+        "⚙️ محرك المطابقة المستهدف:",
+        ["المحرك القياسي", "محرك تخطي التسلسل (بطاقة فقط)"],
+        horizontal=True
+    )
 
 card_type_param = "old" if card_choice_ui == "رقم البطاقة القديم" else "new"
 card_col_name = card_choice_ui
 
-swap_files = st.checkbox("🔄 **عكس الملفين يدوياً (القديم يصبح حديثاً والحديث قديماً)** - استخدمه إذا كان الترتيب غير صحيح")
+swap_files = st.checkbox("🔄 **عكس الملفين يدوياً (القديم يصبح حديثاً والحديث قديماً)** - استخدمه إذا كان الترتيب الزمني غير صحيح")
 
 grid_column_configuration = {
     "التسلسل": st.column_config.TextColumn("التسلسل", width="small"),
@@ -425,7 +435,7 @@ grid_column_configuration = {
 
 if st.button("بدء المقارنة الذكية واستخراج المتغيرات"):
     if len(uploaded_files) == 2:
-        with st.spinner('جاري التحليل...'):
+        with st.spinner('جاري التحليل والمطابقة...'):
             doc1 = Document(uploaded_files[0])
             doc2 = Document(uploaded_files[1])
             
@@ -448,11 +458,11 @@ if st.button("بدء المقارنة الذكية واستخراج المتغي
 
             st.markdown(f"<div class='date-badge'>الملف المعتمد كـ <span class='old'>السابق: ({old_name})</span> | الملف المعتمد كـ <span class='new'>الحديث: ({new_name})</span></div>", unsafe_allow_html=True)
             
-            # تمرير خيار نوع البطاقة لدالة الاستخراج
             old_data = extract_clean_records(old_doc, card_type=card_type_param)
             new_data = extract_clean_records(new_doc, card_type=card_type_param)
             
-            results, results_ref, counters = process_comparison(old_data, new_data, comparison_mode, card_col_name)
+            # استدعاء المقارنة مع تمرير نوع المحرك المختار
+            results, results_ref, counters = process_comparison(old_data, new_data, comparison_mode, card_col_name, matching_engine)
             
             if results:
                 results = sorted(results, key=lambda x: (str(x.get("اسم رب الأسرة", "")), x.get("meta_sort", 0)))
@@ -467,7 +477,7 @@ if st.button("بدء المقارنة الذكية واستخراج المتغي
                             df_results.at[idx, "اسم رب الأسرة"] = ""
                             df_results.at[idx, card_col_name] = ""
                 
-                st.markdown(f"<h3 style='text-align: right;'>📋 المخرجات ({comparison_mode})</h3>", unsafe_allow_html=True)
+                st.markdown(f"<h3 style='text-align: right;'>📋 المخرجات ({comparison_mode}) - المعتمد: {matching_engine}</h3>", unsafe_allow_html=True)
                 
                 if comparison_mode == "النوع الثالث" or comparison_mode == "النوع الأول":
                     styled_df = df_results.style.apply(lambda d: style_type_one_and_three(d, old_data, new_data, card_col_name), axis=None)
