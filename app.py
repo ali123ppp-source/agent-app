@@ -28,20 +28,18 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("<h1 style='text-align: right;'>نظام المقارنة الشامل والذكي 📄🔎</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: right;'>تمت إضافة ميزة الترقيم التلقائي لصفحات الوورد والتعرف الذكي على التواريخ في الترويسة السفلية.</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: right;'>تم تطبيق الديكور الفخم لملف الوورد: ضبط القياسات (3 إنش للاسم و4 إنش للحالة)، والألوان والأحجام الدقيقة (Calibri 16/14).</p>", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 1. محرك الاستشعار الزمني (محسن لاكتشاف التاريخ في الترويسة السفلية)
+# 1. محرك الاستشعار الزمني
 # -----------------------------------------------------------------------------
 def extract_document_date(doc):
     patterns = [
-        r"([A-Za-z]+,\s+[A-Za-z]+\s+\d{1,2},\s+\d{4})", # Sunday, May 17, 2026
-        r"(\d{1,2}[/-]\d{1,2}[/-]\d{4})",               # 17/05/2026 أو 17-05-2026
-        r"(\d{4}[/-]\d{1,2}[/-]\d{1,2})",               # 2026/05/17
-        r"(\d{1,2}\s+[\u0600-\u06FF]+\s+\d{4})"         # تواريخ عربية مثل: 15 أيار 2024
+        r"([A-Za-z]+,\s+[A-Za-z]+\s+\d{1,2},\s+\d{4})", 
+        r"(\d{1,2}[/-]\d{1,2}[/-]\d{4})",               
+        r"(\d{4}[/-]\d{1,2}[/-]\d{1,2})",               
+        r"(\d{1,2}\s+[\u0600-\u06FF]+\s+\d{4})"         
     ]
-    
-    # البحث في الترويسة السفلية (Footer) أولاً
     for section in doc.sections:
         if section.footer:
             for para in reversed(section.footer.paragraphs):
@@ -51,11 +49,10 @@ def extract_document_date(doc):
                         try:
                             d_str = match.group(1)
                             if "-" in d_str or "/" in d_str: return pd.to_datetime(d_str, dayfirst=True).to_pydatetime()
-                            if re.search(r"[\u0600-\u06FF]", d_str): return datetime.now() # حالة تقديرية للعربي
+                            if re.search(r"[\u0600-\u06FF]", d_str): return datetime.now()
                             return datetime.strptime(d_str, "%A, %B %d, %Y")
                         except: continue
                         
-    # البحث في آخر 50 سطراً
     paragraphs = doc.paragraphs[-50:] if len(doc.paragraphs) > 50 else doc.paragraphs
     for para in reversed(paragraphs):
         for pattern in patterns:
@@ -68,13 +65,11 @@ def extract_document_date(doc):
                     return datetime.strptime(d_str, "%A, %B %d, %Y")
                 except: continue
     
-    # الطبقة الثالثة: خصائص الملف (Metadata)
     try:
         if doc.core_properties.modified:
             return doc.core_properties.modified.replace(tzinfo=None)
     except:
         pass
-        
     return None
 
 # -----------------------------------------------------------------------------
@@ -127,7 +122,7 @@ def extract_clean_records(doc, card_type="old"):
     return records
 
 # -----------------------------------------------------------------------------
-# 3. محرك المقارنة ونظام الإحالة الذكي
+# 3. محرك المقارنة الذكي الثابت
 # -----------------------------------------------------------------------------
 def process_comparison(old_data, new_data, mode, card_col_name, matching_engine):
     results = []
@@ -226,11 +221,8 @@ def process_comparison(old_data, new_data, mode, card_col_name, matching_engine)
                         "الأفراد الكلية": old_v["total"], "الأفراد المستحقة": old_v["eligible"], 
                         "الأفراد المحجوبين": old_v["withheld"], "الإحالة": "عائلة محذوفة ❌", "meta_card": card}
             results_type_1_reference.append({**base_row, "meta_status": "deleted"})
-            
-            if mode == "النوع الثاني":
-                results.append({**base_row, "الحالة": "محذوف", "meta_status": "deleted", "meta_card": card, "meta_sort": 1})
-            else:
-                results.append({**base_row, "meta_status": "deleted", "meta_sort": 1})
+            if mode == "النوع الثاني": results.append({**base_row, "الحالة": "محذوف", "meta_status": "deleted", "meta_card": card, "meta_sort": 1})
+            else: results.append({**base_row, "meta_status": "deleted", "meta_sort": 1})
                 
         elif card not in old_data and card in new_data:
             new_v = new_data[card]
@@ -246,43 +238,13 @@ def process_comparison(old_data, new_data, mode, card_col_name, matching_engine)
                         "الأفراد الكلية": new_v["total"], "الأفراد المستحقة": new_v["eligible"], 
                         "الأفراد المحجوبين": new_v["withheld"], "الإحالة": "عائلة مضافة ✨", "meta_card": card}
             results_type_1_reference.append({**base_row, "meta_status": "added"})
-            
-            if mode == "النوع الثاني":
-                results.append({**base_row, "الحالة": "مضاف", "meta_status": "added", "meta_card": card, "meta_sort": 1})
-            else:
-                results.append({**base_row, "meta_status": "added", "meta_sort": 1})
+            if mode == "النوع الثاني": results.append({**base_row, "الحالة": "مضاف", "meta_status": "added", "meta_card": card, "meta_sort": 1})
+            else: results.append({**base_row, "meta_status": "added", "meta_sort": 1})
                 
     return results, results_type_1_reference, counters
 
 # -----------------------------------------------------------------------------
-# 4. دوال التظليل البصري للويب
-# -----------------------------------------------------------------------------
-def style_all_types(doc_df, old_data, new_data, card_col_name, mode):
-    styles = pd.DataFrame('', index=doc_df.index, columns=doc_df.columns)
-    for idx, row in doc_df.iterrows():
-        status = row.get("meta_status", "")
-        card = row.get("meta_card")
-        notes = str(row.get("الإحالة", ""))
-        
-        if "تم تغيير الاسم" in notes: styles.loc[idx, "الإحالة"] = 'color: #2980B9; font-weight: bold;'
-        elif "إضافة طفل" in notes: styles.loc[idx, "الإحالة"] = 'color: #1ABC9C; font-weight: bold;'
-        elif "حجب كلي" in notes or "تم حجب" in notes: styles.loc[idx, "الإحالة"] = 'color: #C0392B; font-weight: bold;'
-        elif "تم رفع الحجب" in notes or "مضافة" in notes: styles.loc[idx, "الإحالة"] = 'color: #27AE60; font-weight: bold;'
-        
-        if status == "type2_old": styles.loc[idx, "الحالة"] = 'background-color: #F5F5F5; font-weight: bold; color: #7F8C8D;'
-        elif status == "type2_new": styles.loc[idx, "الحالة"] = 'background-color: #E8F8F5; font-weight: bold; color: #16A085;'
-        elif status == "added": styles.loc[idx] = 'background-color: #E8F5E9; color: #2E7D32;'
-        elif status == "deleted": styles.loc[idx] = 'background-color: #ECEFF1; color: #455A64; text-decoration: line-through;'
-
-        if status in ["modified", "type2_old", "type2_new"] and card in old_data and card in new_data:
-            o_val, n_val = old_data[card], new_data[card]
-            if o_val["total"] != n_val["total"]: styles.loc[idx, "الأفراد الكلية"] = 'background-color: #FDE0DC; font-weight: bold; color: #C0392B;'
-            if o_val["eligible"] != n_val["eligible"]: styles.loc[idx, "الأفراد المستحقة"] = 'background-color: #FDE0DC; font-weight: bold; color: #C0392B;'
-            if o_val["withheld"] != n_val["withheld"]: styles.loc[idx, "الأفراد المحجوبين"] = 'background-color: #FDE0DC; font-weight: bold; color: #C0392B;'
-    return styles
-
-# -----------------------------------------------------------------------------
-# 5. محرك التصدير الفخم مع الترقيم التلقائي
+# 4. دوال التصدير الفخم لمستندات الوورد (القياسات والألوان المحدثة)
 # -----------------------------------------------------------------------------
 def set_cell_background(cell, color_hex):
     tcPr = cell._tc.get_or_add_tcPr()
@@ -290,11 +252,13 @@ def set_cell_background(cell, color_hex):
     tcPr.append(shd)
 
 def clean_to_triple_name(name_str):
+    """استخلاص الاسم الثلاثي فقط"""
     if not name_str or pd.isna(name_str): return ""
     words = str(name_str).strip().split()
     return " ".join(words[:3])
 
 def format_run(run, font_name="Microsoft Sans Serif", size_pt=14, color_rgb=None, bold=False):
+    """تطبيق الخطوط والأحجام المخصصة (Calibri, Microsoft Sans Serif)"""
     run.font.name = font_name
     run.font.size = Pt(size_pt)
     run.bold = bold
@@ -303,10 +267,8 @@ def format_run(run, font_name="Microsoft Sans Serif", size_pt=14, color_rgb=None
     rFonts = parse_xml(f'<w:rFonts {nsdecls("w")} w:ascii="{font_name}" w:hAnsi="{font_name}" w:cs="{font_name}"/>')
     rPr.append(rFonts)
 
-# دالة الترقيم التلقائي للصفحات
 def add_page_number(paragraph):
     p = paragraph._p
-    
     run_text = OxmlElement('w:r')
     t = OxmlElement('w:t')
     t.text = "الصفحة "
@@ -316,14 +278,11 @@ def add_page_number(paragraph):
     run_fld = OxmlElement('w:r')
     fldChar1 = OxmlElement('w:fldChar')
     fldChar1.set(qn('w:fldCharType'), 'begin')
-    
     instrText = OxmlElement('w:instrText')
     instrText.set(qn('xml:space'), 'preserve')
     instrText.text = "PAGE"
-    
     fldChar2 = OxmlElement('w:fldChar')
     fldChar2.set(qn('w:fldCharType'), 'separate')
-    
     fldChar3 = OxmlElement('w:fldChar')
     fldChar3.set(qn('w:fldCharType'), 'end')
     
@@ -382,75 +341,155 @@ def create_word_table_report(doc_df, title, mode, card_col_name, old_data, new_d
         run_sub = p_sub.add_run(f"\n{table_title}")
         format_run(run_sub, font_name="Microsoft Sans Serif", size_pt=13, color_rgb=RGBColor(44, 62, 80), bold=True)
         
-        headers = ["ت", "اسم المواطن", "التسلسل القديم", "الكلي", "المستحق", "المحجوب", "الحالة"]
-        col_widths = [Inches(0.6), Inches(3.4), Inches(1.2), Inches(0.8), Inches(0.8), Inches(0.8), Inches(2.2)]
+        # استخراج الأعمدة الأصلية (بالترتيب من اليمين لليسار في الوورد)
+        display_df = df_to_write.drop(columns=["meta_status", "meta_card", "meta_sort"], errors="ignore")
+        cols = list(display_df.columns) 
         
-        table = target_doc.add_table(rows=1, cols=len(headers))
+        table = target_doc.add_table(rows=1, cols=len(cols))
         table.style = 'Table Grid'
+        table.autofit = False # إلغاء التوسيع التلقائي لفرض المقاسات الدقيقة التي طلبتها
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
         tblPr = table._element.tblPr
         bidiVisual = parse_xml(f'<w:bidiVisual {nsdecls("w")}/>')
         tblPr.append(bidiVisual)
         
+        # خريطة الأحجام المخصصة (3 إنش للاسم و 4 إنش للحالة)
+        width_map = {
+            "التسلسل": Inches(0.5),
+            "اسم رب الأسرة": Inches(3.0),
+            card_col_name: Inches(1.1),
+            "الحالة": Inches(0.8),
+            "الأفراد الكلية": Inches(0.7),
+            "الأفراد المستحقة": Inches(0.7),
+            "الأفراد المحجوبين": Inches(0.7),
+            "الإحالة": Inches(4.0)
+        }
+        
         hdr_cells = table.rows[0].cells
-        for i, text in enumerate(headers):
-            hdr_cells[i].text = text
-            hdr_cells[i].width = col_widths[i]
+        for i, col in enumerate(cols):
+            # تغيير تسمية بعض العناوين للطباعة
+            display_name = col
+            if col == "اسم رب الأسرة": display_name = "اسم المواطن"
+            elif col == "الإحالة": display_name = "الحالة"
+            elif col == card_col_name: display_name = "التسلسل القديم"
+            elif col == "التسلسل": display_name = "ت"
+            
+            hdr_cells[i].text = display_name
+            hdr_cells[i].width = width_map.get(col, Inches(1.0))
             set_cell_background(hdr_cells[i], "E8ECEF")
             p = hdr_cells[i].paragraphs[0]
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            if p.runs: format_run(p.runs[0], font_name="Microsoft Sans Serif", size_pt=12, color_rgb=RGBColor(44, 62, 80), bold=True)
+            if p.runs:
+                # العناوين: حجم 14
+                format_run(p.runs[0], font_name="Microsoft Sans Serif", size_pt=14, color_rgb=RGBColor(44, 62, 80), bold=True)
         
         for row_idx, (_, row) in enumerate(df_to_write.iterrows()):
             row_cells = table.add_row().cells
             row_bg = "FFFFFF" if row_idx % 2 == 0 else "F8F9F9"
+            status = row.get("meta_status", "normal")
             
-            val_seq_new = str(row_idx + 1)
-            val_name = clean_to_triple_name(row.get("اسم رب الأسرة", ""))
-            val_seq_old = str(row.get("التسلسل", ""))
-            val_total = str(row.get("الأفراد الكلية", ""))
-            val_eligible = str(row.get("الأفراد المستحقة", ""))
-            val_withheld = str(row.get("الأفراد المحجوبين", ""))
-            
-            ref_text = ""
-            if "الإحالة" in row and pd.notna(row["الإحالة"]) and str(row["الإحالة"]).strip() != "": ref_text = str(row["الإحالة"]).strip()
-            elif "الحالة" in row and pd.notna(row["الحالة"]) and str(row["الحالة"]).strip() != "": ref_text = str(row["الحالة"]).strip()
-                
-            cell_values = [val_seq_new, val_name, val_seq_old, val_total, val_eligible, val_withheld, ref_text]
-            
-            for i in range(len(headers)):
+            for i, col in enumerate(cols):
                 cell = row_cells[i]
-                cell.width = col_widths[i]
-                cell.text = cell_values[i]
-                p = cell.paragraphs[0]
-                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                cell.width = width_map.get(col, Inches(1.0))
                 set_cell_background(cell, row_bg)
                 
-                if i == 0: set_cell_background(cell, "E5E7E9")
-                elif i == 2: set_cell_background(cell, "FADBD8")
-                    
-                if p.runs:
-                    run = p.runs[0]
-                    color_rgb, bold_flag = None, False
-                    
-                    if i == 3: color_rgb, bold_flag = RGBColor(0, 51, 204), True
-                    elif i == 4: color_rgb, bold_flag = RGBColor(0, 128, 0), True
-                    elif i == 5: color_rgb, bold_flag = RGBColor(204, 0, 0), True
-                    elif i == 6: color_rgb, bold_flag = RGBColor(102, 0, 153), True
-                    else: color_rgb = RGBColor(0, 0, 0)
+                # تظليل الأعمدة الخاصة
+                if col == "التسلسل": set_cell_background(cell, "E5E7E9") # رصاصي لعمود "ت"
+                elif col == card_col_name: set_cell_background(cell, "FADBD8") # أحمر فاتح للبطاقة/التسلسل القديم
+                elif col == "الحالة" and mode == "النوع الثاني":
+                    if status == "type2_old": set_cell_background(cell, "F5F5F5")
+                    elif status == "type2_new": set_cell_background(cell, "E8F8F5")
+                
+                val_text = str(row[col]) if pd.notna(row[col]) and str(row[col]) != "" else ""
+                if col == "اسم رب الأسرة": val_text = clean_to_triple_name(val_text)
+                
+                p = cell.paragraphs[0]
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                
+                # تلوين وتنسيق حقل الإحالة (الذي يسمى "الحالة" طباعياً)
+                if col == "الإحالة" and val_text:
+                    parts = val_text.split(" | ")
+                    for p_idx, part in enumerate(parts):
+                        run = p.add_run(part)
                         
-                    format_run(run, font_name="Microsoft Sans Serif", size_pt=14, color_rgb=color_rgb, bold=bold_flag)
+                        # الألوان بدقة بناءً على طلبك
+                        part_color = RGBColor(0, 0, 0)
+                        if "إضافة" in part: part_color = RGBColor(0, 0, 255) # أزرق
+                        elif "حجب كلي" in part: part_color = RGBColor(128, 0, 0) # ماروني
+                        elif "حجب" in part and "رفع" not in part: part_color = RGBColor(255, 0, 0) # أحمر
+                        elif "رفع" in part: part_color = RGBColor(0, 128, 0) # أخضر
+                        elif "تغيير" in part or "تبدل" in part: part_color = RGBColor(128, 0, 128)
+                        elif "مضافة" in part: part_color = RGBColor(0, 128, 0)
+                        elif "محذوفة" in part: part_color = RGBColor(255, 0, 0)
+                        
+                        # خط Calibri بحجم 14
+                        format_run(run, font_name="Calibri", size_pt=14, color_rgb=part_color, bold=True)
+                        if p_idx < len(parts) - 1:
+                            sep_run = p.add_run(" | ")
+                            format_run(sep_run, font_name="Calibri", size_pt=14, color_rgb=RGBColor(0,0,0), bold=True)
+                else:
+                    run = p.add_run(val_text)
+                    c_font, c_size, c_color, c_bold = "Microsoft Sans Serif", 14, RGBColor(0, 0, 0), False
                     
-        target_doc.add_paragraph()
+                    if col == "اسم رب الأسرة":
+                        c_size = 16 # حجم الاسم 16
+                        c_bold = True
+                    elif col == "الأفراد الكلية": c_color, c_bold = RGBColor(0, 51, 204), True
+                    elif col == "الأفراد المستحقة": c_color, c_bold = RGBColor(0, 128, 0), True
+                    elif col == "الأفراد المحجوبين": c_color, c_bold = RGBColor(204, 0, 0), True
+                    elif col == "الحالة": c_color, c_bold = RGBColor(102, 0, 153), True
+                        
+                    format_run(run, font_name=c_font, size_pt=c_size, color_rgb=c_color, bold=c_bold)
+            
+            # دمج الخلايا لـ "النوع الثاني"
+            if mode == "النوع الثاني":
+                if status == "type2_old": prev_cells = row_cells
+                elif status == "type2_new" and prev_cells:
+                    for merge_col in ["التسلسل", "اسم رب الأسرة", card_col_name, "الإحالة"]:
+                        if merge_col in cols:
+                            m_idx = cols.index(merge_col)
+                            if merge_col == "الإحالة": text_to_keep = str(row["الإحالة"])
+                            elif merge_col == "اسم رب الأسرة": text_to_keep = clean_to_triple_name(row["اسم رب الأسرة"])
+                            elif merge_col == card_col_name: text_to_keep = str(row[card_col_name])
+                            else: text_to_keep = prev_cells[m_idx].text
+                                
+                            prev_cells[m_idx].merge(row_cells[m_idx])
+                            prev_cells[m_idx].text = ""
+                            p_merge = prev_cells[m_idx].paragraphs[0]
+                            p_merge.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                            
+                            if merge_col == "الإحالة" and text_to_keep:
+                                parts = text_to_keep.split(" | ")
+                                for p_idx, part in enumerate(parts):
+                                    run = p_merge.add_run(part)
+                                    part_color = RGBColor(0, 0, 0)
+                                    if "إضافة" in part: part_color = RGBColor(0, 0, 255)
+                                    elif "حجب كلي" in part: part_color = RGBColor(128, 0, 0)
+                                    elif "حجب" in part and "رفع" not in part: part_color = RGBColor(255, 0, 0)
+                                    elif "رفع" in part: part_color = RGBColor(0, 128, 0)
+                                    elif "تغيير" in part or "تبدل" in part: part_color = RGBColor(128, 0, 128)
+                                    elif "مضافة" in part: part_color = RGBColor(0, 128, 0)
+                                    elif "محذوفة" in part: part_color = RGBColor(255, 0, 0)
+                                    
+                                    format_run(run, font_name="Calibri", size_pt=14, color_rgb=part_color, bold=True)
+                                    if p_idx < len(parts) - 1:
+                                        sep_run = p_merge.add_run(" | ")
+                                        format_run(sep_run, font_name="Calibri", size_pt=14, color_rgb=RGBColor(0,0,0), bold=True)
+                            else:
+                                run = p_merge.add_run(text_to_keep)
+                                c_font, c_size, c_bold = "Microsoft Sans Serif", 14, False
+                                if merge_col == "اسم رب الأسرة": c_size, c_bold = 16, True
+                                format_run(run, font_name=c_font, size_pt=c_size, color_rgb=RGBColor(0,0,0), bold=c_bold)
 
+    # 1. طباعة الجدول الرئيسي
     append_table_to_doc(doc, doc_df, title)
     
+    # 2. طباعة الفواصل والجداول المستقلة المعزولة
     cases_to_extract = [
         ("حالات تغيير اسم رب الأسرة", "تم تغيير الاسم"), ("حالات إضافة طفل", "إضافة طفل"),
         ("حالات حجب كلي", "حجب كلي"), ("حالات حجب نفر", "تم حجب"), ("حالات رفع الحجب", "تم رفع الحجب"),
         ("العوائل المضافة", "عائلة مضافة"), ("العوائل المحذوفة", "عائلة محذوفة")
     ]
-    
     for case_title, keyword in cases_to_extract:
         if keyword == "تم حجب": matched_mask = doc_df['الإحالة'].str.contains("تم حجب", na=False) & ~doc_df['الإحالة'].str.contains("حجب كلي", na=False)
         else: matched_mask = doc_df['الإحالة'].str.contains(keyword, na=False)
@@ -468,6 +507,33 @@ def create_word_table_report(doc_df, title, mode, card_col_name, old_data, new_d
     doc.save(buffer)
     buffer.seek(0)
     return buffer
+
+# -----------------------------------------------------------------------------
+# 5. التنسيق البصري للويب 
+# -----------------------------------------------------------------------------
+def style_all_types(doc_df, old_data, new_data, card_col_name, mode):
+    styles = pd.DataFrame('', index=doc_df.index, columns=doc_df.columns)
+    for idx, row in doc_df.iterrows():
+        status = row.get("meta_status", "")
+        card = row.get("meta_card")
+        notes = str(row.get("الإحالة", ""))
+        
+        if "تم تغيير الاسم" in notes: styles.loc[idx, "الإحالة"] = 'color: #2980B9; font-weight: bold;'
+        elif "إضافة طفل" in notes: styles.loc[idx, "الإحالة"] = 'color: #1ABC9C; font-weight: bold;'
+        elif "حجب كلي" in notes or "تم حجب" in notes: styles.loc[idx, "الإحالة"] = 'color: #C0392B; font-weight: bold;'
+        elif "تم رفع الحجب" in notes or "مضافة" in notes: styles.loc[idx, "الإحالة"] = 'color: #27AE60; font-weight: bold;'
+        
+        if status == "type2_old": styles.loc[idx, "الحالة"] = 'background-color: #F5F5F5; font-weight: bold; color: #7F8C8D;'
+        elif status == "type2_new": styles.loc[idx, "الحالة"] = 'background-color: #E8F8F5; font-weight: bold; color: #16A085;'
+        elif status == "added": styles.loc[idx] = 'background-color: #E8F5E9; color: #2E7D32;'
+        elif status == "deleted": styles.loc[idx] = 'background-color: #ECEFF1; color: #455A64; text-decoration: line-through;'
+
+        if status in ["modified", "type2_old", "type2_new"] and card in old_data and card in new_data:
+            o_val, n_val = old_data[card], new_data[card]
+            if o_val["total"] != n_val["total"]: styles.loc[idx, "الأفراد الكلية"] = 'background-color: #FDE0DC; font-weight: bold; color: #C0392B;'
+            if o_val["eligible"] != n_val["eligible"]: styles.loc[idx, "الأفراد المستحقة"] = 'background-color: #FDE0DC; font-weight: bold; color: #C0392B;'
+            if o_val["withheld"] != n_val["withheld"]: styles.loc[idx, "الأفراد المحجوبين"] = 'background-color: #FDE0DC; font-weight: bold; color: #C0392B;'
+    return styles
 
 def create_word_stats_report(counters, filename_base):
     doc = Document()
@@ -504,17 +570,6 @@ with col_opts3: matching_engine = st.radio("⚙️ محرك المطابقة ا�
 card_type_param = "old" if card_choice_ui == "رقم البطاقة القديم" else "new"
 card_col_name = card_choice_ui
 swap_files = st.checkbox("🔄 **عكس الملفين يدوياً (القديم يصبح حديثاً والحديث قديماً)**")
-
-grid_column_configuration = {
-    "التسلسل": st.column_config.TextColumn("التسلسل", width="small"),
-    "اسم رب الأسرة": st.column_config.TextColumn("اسم رب الأسرة", width="large"),
-    card_col_name: st.column_config.TextColumn(card_col_name, width="medium"),
-    "الحالة": st.column_config.TextColumn("الحالة", width="small"),
-    "الأفراد الكلية": st.column_config.NumberColumn("الأفراد الكلية", width="small"),
-    "الأفراد المستحقة": st.column_config.NumberColumn("الأفراد المستحقة", width="small"),
-    "الأفراد المحجوبين": st.column_config.NumberColumn("الأفراد المحجوبين", width="small"),
-    "الإحالة": st.column_config.TextColumn("الإحالة", width="large")
-}
 
 if st.button("بدء المقارنة الذكية واستخراج المتغيرات والأوراق"):
     if len(uploaded_files) == 2:
@@ -558,7 +613,7 @@ if st.button("بدء المقارنة الذكية واستخراج المتغي
                 if comparison_mode == "النوع الثاني": cols_order = ["التسلسل", "اسم رب الأسرة", card_col_name, "الحالة", "الأفراد الكلية", "الأفراد المستحقة", "الأفراد المحجوبين", "الإحالة"]
                 else: cols_order = ["التسلسل", "اسم رب الأسرة", card_col_name, "الأفراد الكلية", "الأفراد المستحقة", "الأفراد المحجوبين", "الإحالة"]
                 
-                st.dataframe(styled_df, use_container_width=True, hide_index=True, column_order=cols_order, column_config=grid_column_configuration)
+                st.dataframe(styled_df, use_container_width=True, hide_index=True, column_order=cols_order)
                 
                 base_name = new_name.rsplit('.', 1)[0]
                 col_dl1, col_dl2 = st.columns(2)
@@ -568,6 +623,7 @@ if st.button("بدء المقارنة الذكية واستخراج المتغي
                 with col_dl2:
                     word_stats = create_word_stats_report(counters, base_name)
                     st.download_button(label="📊 تحميل تقرير الإحصاء Word", data=word_stats, file_name=f"احصائيات_{base_name}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                
             else:
                 st.success("🎉 تطابق تام! لا توجد فروقات بين الملفين.")
     else:
