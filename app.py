@@ -28,7 +28,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("<h1 style='text-align: right;'>نظام المقارنة الشامل والذكي 📄🔎</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: right;'>تمت معالجة ملف الـ Word وحقن الأبعاد الإنشية والألوان بدقة برمجية صارمة لمنع برنامج Word من تغييرها تلقائياً.</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: right;'>تمت إعادة صياغة وهيكلة ملف الـ Word الناتج برمجياً وتدوير العناوين وتنسيق الصفوف التبادلية بدقة فائقة.</p>", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
 # 1. محرك الاستشعار الزمني
@@ -244,7 +244,7 @@ def process_comparison(old_data, new_data, mode, card_col_name, matching_engine)
     return results, results_type_1_reference, counters
 
 # -----------------------------------------------------------------------------
-# 4. دوال التصدير الاحترافي لملفات الوورد بـ XML ثابت يمنع تجاوز القياسات
+# 4. دوال التصدير المحدثة والمصقولة لملف الوورد الناتج باحترافية كاملة
 # -----------------------------------------------------------------------------
 def set_cell_background(cell, color_hex):
     tcPr = cell._tc.get_or_add_tcPr()
@@ -252,10 +252,9 @@ def set_cell_background(cell, color_hex):
     tcPr.append(shd)
 
 def set_cell_width(cell, width_inches):
-    """حقن القياس الإنشى إجبارياً داخل بنية الـ XML الخاصة بالخلية لـ Word"""
     cell.width = Inches(width_inches)
     tcPr = cell._tc.get_or_add_tcPr()
-    dxa_val = int(width_inches * 1440) # تحويل من إنش إلى dxa
+    dxa_val = int(width_inches * 1440)
     tcW = parse_xml(f'<w:tcW {nsdecls("w")} w:w="{dxa_val}" w:type="dxa"/>')
     tcPr.append(tcW)
 
@@ -324,7 +323,10 @@ def create_word_table_report(doc_df, title, mode, card_col_name, old_data, new_d
         banner_table = target_doc.add_table(rows=1, cols=1)
         banner_table.alignment = WD_TABLE_ALIGNMENT.CENTER
         banner_cell = banner_table.rows[0].cells[0]
-        set_cell_background(banner_cell, "2C3E50")
+        
+        # 🟦 تعديل مأكد: العنوان الأعلى مضلل بلون أزرق كحلي غامق جداً وفخم
+        set_cell_background(banner_cell, "111E38")
+        
         tcPr = banner_cell._tc.get_or_add_tcPr()
         tcMar = parse_xml(f'<w:tcMar {nsdecls("w")}><w:top w:w="180" w:type="dxa"/><w:bottom w:w="180" w:type="dxa"/><w:left w:w="250" w:type="dxa"/><w:right w:w="250" w:type="dxa"/></w:tcMar>')
         tcPr.append(tcMar)
@@ -354,7 +356,6 @@ def create_word_table_report(doc_df, title, mode, card_col_name, old_data, new_d
         table.autofit = False 
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
         
-        # 🟢 قفل الجدول إجبارياً على مقاسات محددة بالإنش لمنع الوورد من التميد التلقائي
         tblPr = table._element.tblPr
         tblLayout = parse_xml(f'<w:tblLayout {nsdecls("w")} w:type="fixed"/>')
         tblPr.append(tblLayout)
@@ -362,12 +363,12 @@ def create_word_table_report(doc_df, title, mode, card_col_name, old_data, new_d
         bidiVisual = parse_xml(f'<w:bidiVisual {nsdecls("w")}/>')
         tblPr.append(bidiVisual)
         
-        # 🗺️ خريطة الأبعاد المحدثة: 3 للاسم، 4 للحالة، وبقية الحقول مصغرة لأقصى درجة
+        # 🗺️ خريطة الأبعاد المعدلة برمجياً بدقة عالية (تمت زيادة عرض عمود التسلسل بنسبة 50% ليصبح 0.55)
         width_map = {
-            "التسلسل": 0.35,
+            "التسلسل": 0.55,
             "اسم رب الأسرة": 3.0,
-            card_col_name: 0.75,
-            "الحالة": 0.5,
+            card_col_name: 0.90,
+            "الحالة": 0.6,
             "الأفراد الكلية": 0.45,
             "الأفراد المستحقة": 0.45,
             "الأفراد المحجوبين": 0.45,
@@ -379,16 +380,27 @@ def create_word_table_report(doc_df, title, mode, card_col_name, old_data, new_d
             display_name = col
             if col == "اسم رب الأسرة": display_name = "اسم المواطن"
             elif col == "الإحالة": display_name = "الحالة"
-            elif col == card_col_name: display_name = "التسلسل القديم"
+            elif col == card_col_name: display_name = "رقم البطاقة" # تصحيح المسمى لإلغاء أي لبس أو تداخل بالبيانات
             elif col == "التسلسل": display_name = "ت"
+            # 📄 تجريد الكلمات لتصبح كلمة واحدة فقط كما طلبت
+            elif col == "الأفراد الكلية": display_name = "الكلي"
+            elif col == "الأفراد المستحقة": display_name = "المستحق"
+            elif col == "الأفراد المحجوبين": display_name = "المحجوب"
             
             hdr_cells[i].text = display_name
-            set_cell_width(hdr_cells[i], width_map.get(col, 1.0)) # تطبيق العرض المقفل على العنوان
+            set_cell_width(hdr_cells[i], width_map.get(col, 1.0))
             set_cell_background(hdr_cells[i], "E8ECEF")
+            
+            # 🔄 قلب العينات الـ 3 كلمات المحددة بمقدار 90 درجة في صف العناوين
+            if col in ["الأفراد الكلية", "الأفراد المستحقة", "الأفراد المحجوبين"]:
+                tcPr = hdr_cells[i]._tc.get_or_add_tcPr()
+                textDirection = parse_xml(f'<w:textDirection {nsdecls("w")} w:val="btLr"/>')
+                tcPr.append(textDirection)
+            
             p = hdr_cells[i].paragraphs[0]
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
             if p.runs:
-                # 📐 حجم خط صف العنوان = 14
+                # حجم خط صف العناوين = 14 تماماً وموحد
                 format_run(p.runs[0], font_name="Microsoft Sans Serif", size_pt=14, color_rgb=RGBColor(44, 62, 80), bold=True)
         
         prev_cells = None
@@ -396,41 +408,36 @@ def create_word_table_report(doc_df, title, mode, card_col_name, old_data, new_d
             row_cells = table.add_row().cells
             status = row.get("meta_status", "normal")
             
-            # تهيئة وتثبيت العرض لكل خلية بالسطر قبل الكتابة
+            # 🏁 هندسة الصفوف التبادلية بحرفية (صف أبيض، صف رصاصي فاتح) لراحة العين أثناء المراجعة
+            if mode == "النوع الثاني":
+                bg_color = "FFFFFF" if (row_idx // 2) % 2 == 0 else "F2F4F4"
+            else:
+                bg_color = "FFFFFF" if row_idx % 2 == 0 else "F2F4F4"
+            
             for i, col in enumerate(cols):
                 set_cell_width(row_cells[i], width_map.get(col, 1.0))
-                set_cell_background(row_cells[i], "FFFFFF" if row_idx % 2 == 0 else "F8F9F9")
+                set_cell_background(row_cells[i], bg_color)
             
             for i, col in enumerate(cols):
                 cell = row_cells[i]
-                
-                if col == "التسلسل": set_cell_background(cell, "E5E7E9") 
-                elif col == card_col_name: set_cell_background(cell, "FADBD8") 
-                elif col == "الحالة" and mode == "النوع الثاني":
-                    if status == "type2_old": set_cell_background(cell, "F5F5F5")
-                    elif status == "type2_new": set_cell_background(cell, "E8F8F5")
-                
                 val_text = str(row[col]) if pd.notna(row[col]) and str(row[col]) != "" else ""
                 if col == "اسم رب الأسرة": val_text = clean_to_triple_name(val_text)
                 
                 p = cell.paragraphs[0]
                 p.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 
-                # 🎨 تلوين حقل الإحالة (عمود الحالة) وتهيئته بخط Calibri حجم 14
                 if col == "الإحالة" and val_text:
                     parts = val_text.split(" | ")
                     for p_idx, part in enumerate(parts):
                         run = p.add_run(part)
-                        
                         part_color = RGBColor(0, 0, 0)
-                        if "طفل" in part: part_color = RGBColor(0, 0, 255)       # 🔵 طفل -> أزرق
-                        elif "رفع" in part: part_color = RGBColor(0, 128, 0)      # 🟢 رفع حجب -> أخضر
-                        elif "حجب كلي" in part: part_color = RGBColor(128, 0, 0)  # 🟤 حجب كلي -> ماروني
-                        elif "حجب" in part: part_color = RGBColor(255, 0, 0)      # 🔴 حجب -> أحمر
+                        if "طفل" in part: part_color = RGBColor(0, 0, 255)
+                        elif "رفع" in part: part_color = RGBColor(0, 128, 0)
+                        elif "حجب كلي" in part: part_color = RGBColor(128, 0, 0)
+                        elif "حجب" in part: part_color = RGBColor(255, 0, 0)
                         elif "مضافة" in part: part_color = RGBColor(0, 128, 0)
                         elif "محذوفة" in part: part_color = RGBColor(255, 0, 0)
                         
-                        # الخط المقفل لعمود الحالة هو Calibri
                         format_run(run, font_name="Calibri", size_pt=14, color_rgb=part_color, bold=True)
                         if p_idx < len(parts) - 1:
                             sep_run = p.add_run(" | ")
@@ -440,10 +447,10 @@ def create_word_table_report(doc_df, title, mode, card_col_name, old_data, new_d
                     c_font, c_size, c_color, c_bold = "Microsoft Sans Serif", 14, RGBColor(0, 0, 0), False
                     
                     if col == "اسم رب الأسرة":
-                        c_size = 16 # 📐 حجم خط عمود اسم المواطن = 16
+                        c_size = 16
                         c_bold = True
                     elif col == "الحالة":
-                        c_font = "Calibri" # 🟢 نوع خط عمود الحالة = Calibri
+                        c_font = "Calibri"
                         c_color, c_bold = RGBColor(102, 0, 153), True
                     elif col == "الأفراد الكلية": c_color, c_bold = RGBColor(0, 51, 204), True
                     elif col == "الأفراد المستحقة": c_color, c_bold = RGBColor(0, 128, 0), True
@@ -451,7 +458,6 @@ def create_word_table_report(doc_df, title, mode, card_col_name, old_data, new_d
                         
                     format_run(run, font_name=c_font, size_pt=c_size, color_rgb=c_color, bold=c_bold)
             
-            # معالجة دمج خلايا النوع الثاني بدقة مع الحفاظ على القفل الإنشى
             if mode == "النوع الثاني":
                 if status == "type2_old": prev_cells = row_cells
                 elif status == "type2_new" and prev_cells:
@@ -464,7 +470,8 @@ def create_word_table_report(doc_df, title, mode, card_col_name, old_data, new_d
                             else: text_to_keep = prev_cells[m_idx].text
                                 
                             prev_cells[m_idx].merge(row_cells[m_idx])
-                            set_cell_width(prev_cells[m_idx], width_map.get(merge_col, 1.0)) # إعادة تثبيت المقاس بعد الدمج
+                            set_cell_width(prev_cells[m_idx], width_map.get(merge_col, 1.0))
+                            set_cell_background(prev_cells[m_idx], bg_color) # الحفاظ التام على تناسق اللون التبادلي حتى بعد عملية الدمج
                             
                             prev_cells[m_idx].text = ""
                             p_merge = prev_cells[m_idx].paragraphs[0]
@@ -626,7 +633,7 @@ if st.button("بدء المقارنة الذكية واستخراج المتغي
                 col_dl1, col_dl2 = st.columns(2)
                 with col_dl1:
                     word_report = create_word_table_report(df_results_full, f"تقرير - {comparison_mode}", comparison_mode, card_col_name, old_data, new_data, new_name)
-                    st.download_button(label="📥 تحميل المخرجات Word بالديكور الجديد الفخم المقفل", data=word_report, file_name=f"تقرير_{base_name}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                    st.download_button(label="📥 تحميل المخرجات Word بالتصميم الجديد المطور والمقفل", data=word_report, file_name=f"تقرير_{base_name}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
                 with col_dl2:
                     word_stats = create_word_stats_report(counters, base_name)
                     st.download_button(label="📊 تحميل تقرير الإحصاء Word", data=word_stats, file_name=f"احصائيات_{base_name}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
