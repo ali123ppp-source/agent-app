@@ -4,3 +4,4 @@ pandas
 reportlab
 arabic-reshaper
 python-bidi
+openpyxl 
