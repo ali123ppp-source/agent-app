@@ -138,26 +138,31 @@ def extract_eligible_only_records(doc):
 # 2.5. محرك الاستخراج الديناميكي الشامل (Excel بكافة الشيتات)
 # -----------------------------------------------------------------------------
 def extract_records_from_excel(file_path, mode, card_type="old"):
-    """
-    تم التحديث لضمان استخراج البيانات من جميع الشيتات في الملف
-    """
     records = {}
     try:
-        # تحويل الملف إلى BytesIO لضمان عدم استهلاك الـ Buffer وقراءة الملف بشكل كامل
-        file_bytes = file_path.getvalue() if hasattr(file_path, 'getvalue') else file_path.read()
-        excel_data = pd.read_excel(BytesIO(file_bytes), sheet_name=None, dtype=str)
-        
-        for sheet_name, df in excel_data.items():
-            df = df.dropna(how='all', axis=0).dropna(how='all', axis=1)
-            if df.empty: continue
+        # 1. التأكد التام من عودة مؤشر الملف للبداية (مهم جداً في Streamlit)
+        if hasattr(file_path, 'seek'):
+            file_path.seek(0)
             
-            # إعادة ضبط الفهرس لضمان البحث الدقيق عن العناوين في كل شيت
+        # 2. استخدام ExcelFile لضمان حصر وقراءة كافة الشيتات دون استثناء
+        xls = pd.ExcelFile(file_path)
+        
+        for sheet_name in xls.sheet_names:
+            # قراءة الشيت الحالي
+            df = pd.read_excel(xls, sheet_name=sheet_name, dtype=str)
+            
+            # إزالة الصفوف والأعمدة الفارغة بالكامل
+            df = df.dropna(how='all', axis=0).dropna(how='all', axis=1)
+            if df.empty: 
+                continue
+            
             df = df.reset_index(drop=True)
             
-            # 1. البحث عن صف العناوين بذكاء
+            # 3. البحث عن صف العناوين بمرونة أعلى (نبحث في أول 50 صف لضمان التقاطه)
             header_idx = -1
-            for i, row in df.head(20).iterrows():
-                row_str = ' '.join([str(val) for val in row.values if pd.notna(val)])
+            for i in range(min(50, len(df))):
+                row_str = ' '.join([str(val) for val in df.iloc[i].values if pd.notna(val)])
+                # نبحث عن الكلمات المفتاحية للعناوين
                 if 'بطاق' in row_str or 'اسم' in row_str:
                     header_idx = i
                     break
@@ -166,27 +171,29 @@ def extract_records_from_excel(file_path, mode, card_type="old"):
                 df.columns = df.iloc[header_idx]
                 df = df.iloc[header_idx + 1:]
                 
-            df.columns = [str(col).strip() for col in df.columns]
+            # 4. تنظيف عنيف لأسماء الأعمدة (إزالة المسافات، الفواصل، والأسطر المخفية)
+            df.columns = [str(col).replace('\n', '').replace('\r', '').replace(' ', '').strip() for col in df.columns]
             
-            # 2. ربط الأعمدة برمجياً
+            # ربط الأعمدة
             col_seq, col_name, col_card, col_tot, col_elig, col_with = None, None, None, None, None, None
             for col in df.columns:
-                col_s = col.replace(" ", "")
-                if col_s == 'ت' or 'تسلسل' in col_s: col_seq = col
-                elif 'اسم' in col_s and 'مركز' not in col_s and 'وكيل' not in col_s: col_name = col
-                elif 'بطاق' in col_s: col_card = col
-                elif 'كلي' in col_s or 'الكل' in col_s or 'افراد' in col_s: col_tot = col
-                elif 'مستحق' in col_s: col_elig = col
-                elif 'محجوب' in col_s: col_with = col
+                if col == 'ت' or 'تسلسل' in col: col_seq = col
+                elif 'اسم' in col and 'مركز' not in col and 'وكيل' not in col: col_name = col
+                elif 'بطاق' in col: col_card = col
+                elif 'كلي' in col or 'الكل' in col or 'افراد' in col: col_tot = col
+                elif 'مستحق' in col: col_elig = col
+                elif 'محجوب' in col: col_with = col
             
-            # تخطي الصفحة إذا لم تكن تحتوي على بيانات العوائل الأساسية
-            if not col_card or not col_name: continue 
+            # تخطي الصفحة إذا لم يتم العثور على عمود الاسم والبطاقة
+            if not col_card or not col_name: 
+                continue 
             
-            # 3. إدراج البيانات في القاموس المعتمد (يتراكم مع باقي الشيتات)
+            # إدراج البيانات (تتراكم من جميع الشيتات)
             for _, row in df.iterrows():
                 try:
                     card = str(row[col_card]).strip()
-                    if not card or card == 'nan' or not any(c.isdigit() for c in card): continue
+                    if not card or card == 'nan' or not any(c.isdigit() for c in card): 
+                        continue
                     
                     name = str(row[col_name]).strip()
                     seq = str(row[col_seq]).strip() if col_seq and pd.notna(row.get(col_seq)) else "-"
