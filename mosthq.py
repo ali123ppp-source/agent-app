@@ -27,52 +27,8 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align: right;'>نظام المقارنة الشامل والذكي 📄🔎📊</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: right;'>تمت إعادة صياغة وهيكلة ملف الـ Word الناتج برمجياً وتدوير العناوين وتنسيق الصفوف التبادلية بدقة فائقة. (يدعم الآن Word و Excel)</p>", unsafe_allow_html=True)
-
-# =============================================================================
-# مُغلّف توافقية Excel ليحاكي كائنات Word (الجديد)
-# =============================================================================
-def load_excel_as_dummy_doc(file_bytes):
-    """يحول ملف إكسل إلى هيكل وهمي مطابق لـ docx.Document لتجنب تغيير الكود الأصلي"""
-    df = pd.read_excel(file_bytes, header=None)
-    
-    class DummyCell:
-        def __init__(self, val):
-            if pd.isna(val):
-                self.text = ""
-            else:
-                val_str = str(val).strip()
-                # معالجة الأرقام التي تقرأها البانداس كفلوت (مثل 12345.0)
-                if val_str.endswith('.0'): 
-                    val_str = val_str[:-2]
-                self.text = val_str
-
-    class DummyRow:
-        def __init__(self, row_data):
-            self.cells = [DummyCell(c) for c in row_data]
-
-    class DummyTable:
-        def __init__(self, df):
-            self.rows = [DummyRow(row.values) for _, row in df.iterrows()]
-
-    class DummyParagraph:
-        def __init__(self, text):
-            self.text = text
-
-    class DummyDoc:
-        def __init__(self, df):
-            self.tables = [DummyTable(df)]
-            self.paragraphs = []
-            self.sections = [] # فارغ لعدم كسر دالة التاريخ
-            
-            # تحويل أول 50 صف لفقرات نصية لتستطيع دالة التاريخ استشعارها بنفس الطريقة
-            for _, row in df.head(50).iterrows():
-                row_text = " ".join([str(c) for c in row.values if not pd.isna(c)])
-                if row_text.strip():
-                    self.paragraphs.append(DummyParagraph(row_text))
-                    
-    return DummyDoc(df)
+st.markdown("<h1 style='text-align: right;'>نظام المقارنة الشامل والذكي 📄🔎</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: right;'>تمت إعادة صياغة وهيكلة ملف الـ Word الناتج برمجياً وتدوير العناوين وتنسيق الصفوف التبادلية بدقة فائقة.</p>", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
 # 1. محرك الاستشعار الزمني
@@ -110,7 +66,7 @@ def extract_document_date(doc):
                 except: continue
     
     try:
-        if hasattr(doc, 'core_properties') and doc.core_properties.modified:
+        if doc.core_properties.modified:
             return doc.core_properties.modified.replace(tzinfo=None)
     except:
         pass
@@ -174,12 +130,15 @@ def extract_eligible_only_records(doc):
         for row in table.rows:
             cells = [cell.text.strip().replace('\n', ' ') for cell in row.cells]
             
+            # التأكد من وجود 6 أعمدة على الأقل حسب الترتيب المطلوب
             if len(cells) >= 6:
                 if "اسم" in cells[3] or "المركز" in cells[0]: continue
                 
                 seq = cells[0]
+                # new_card = cells[1] # مهمل
                 old_card = cells[2]
                 name = cells[3]
+                # cells[4] مهمل
                 eligible_str = cells[5]
                 
                 if old_card.isdigit() and len(old_card) >= 4:
@@ -188,16 +147,54 @@ def extract_eligible_only_records(doc):
                         records[old_card] = {
                             "seq": seq,
                             "name": name,
-                            "total": 0,       
+                            "total": 0,       # تصفير الكلي لتجاهله
                             "eligible": el_val,
-                            "withheld": 0     
+                            "withheld": 0     # تصفير المحجوب لتجاهله
                         }
                     except ValueError:
                         continue
     return records
 
 # -----------------------------------------------------------------------------
-# 3. محرك المقارنة الذكي الثابت
+# 2.6. محرك استخراج بيانات الإكسل (مضاف حديثاً ولا يؤثر على عمل النظام الأساسي)
+# -----------------------------------------------------------------------------
+def extract_excel_data_dynamically(file_path):
+    """
+    دالة شاملة لاستخراج البيانات من أي ملف إكسل بغض النظر عن هيكليته،
+    دون التأثير على آلية عمل النظام الأساسي.
+    """
+    try:
+        # 1. قراءة الملف واستخراج جميع أوراق العمل (Sheets) دفعة واحدة
+        # استخدام sheet_name=None يضمن عدم تفويت أي بيانات في صفحات أخرى
+        excel_data = pd.read_excel(file_path, sheet_name=None)
+        
+        system_ready_data = {}
+        
+        for sheet_name, df in excel_data.items():
+            # 2. التنظيف الذكي: إزالة الأعمدة والصفوف الفارغة تماماً
+            # (والتي تنتج غالباً عن تنسيقات الإكسل الخاطئة)
+            df_cleaned = df.dropna(how='all', axis=0).dropna(how='all', axis=1)
+            
+            # 3. معالجة الخلايا المدمجة (Merged Cells)
+            # الإكسل يقرأ الخلايا المدمجة كقيمة واحدة والباقي فارغ (NaN)،
+            # يمكن استخدام التعبئة الأمامية (Forward Fill) إذا كانت الأعمدة تتطلب ذلك
+            # df_cleaned = df_cleaned.ffill(axis=0) # (قم بتفعيلها إذا كانت البيانات تعتمد على الدمج العمودي)
+            
+            # 4. توحيد أسماء الأعمدة (إزالة المسافات الزائدة لتجنب أخطاء النظام)
+            if not df_cleaned.columns.empty:
+                df_cleaned.columns = [str(col).strip() for col in df_cleaned.columns]
+            
+            # 5. تحويل البيانات إلى هيكل قياسي (List of Dictionaries)
+            # هذا الهيكل يسهل دمجه في أي قاعدة بيانات أو واجهة برمجة تطبيقات (API)
+            system_ready_data[sheet_name] = df_cleaned.to_dict(orient='records')
+            
+        return system_ready_data
+
+    except Exception as e:
+        return {"error": f"فشل في استخراج البيانات: {str(e)}"}
+
+# -----------------------------------------------------------------------------
+# 3. محرك المقارنة الذكي الثابت (محدث لدعم النموذج الرابع)
 # -----------------------------------------------------------------------------
 def process_comparison(old_data, new_data, mode, card_col_name, matching_engine):
     results = []
@@ -221,6 +218,7 @@ def process_comparison(old_data, new_data, mode, card_col_name, matching_engine)
             target_seq = new_v["seq"] if skip_seq_matching else old_v["seq"]
             notes = []
             
+            # شروط النموذج الرابع (المستحق فقط)
             if mode == "النموذج الرابع (المستحق فقط)":
                 is_changed = (d_elig != 0)
                 if d_elig > 0: notes.append(f"زيادة مستحق ({d_elig}) ➕")
@@ -334,7 +332,7 @@ def process_comparison(old_data, new_data, mode, card_col_name, matching_engine)
     return results, results_type_1_reference, counters
 
 # -----------------------------------------------------------------------------
-# 4. دوال التصدير
+# 4. دوال التصدير المحدثة والمصقولة لملف الوورد الناتج
 # -----------------------------------------------------------------------------
 def set_cell_background(cell, color_hex):
     tcPr = cell._tc.get_or_add_tcPr()
@@ -406,7 +404,7 @@ def create_word_table_report(doc_df, title, mode, card_col_name, old_data, new_d
         add_page_number(p_footer)
         
     def append_table_to_doc(target_doc, df_to_write, table_title):
-        agent_name = new_file_name.replace(".docx", "").replace(".xlsx", "").replace(".xls", "")
+        agent_name = new_file_name.replace(".docx", "")
         agent_name = re.sub(r'(FOOD|FLOUR)', '', agent_name, flags=re.IGNORECASE)
         agent_name = agent_name.strip("- ").strip()
         
@@ -659,9 +657,7 @@ def create_word_stats_report(counters, filename_base):
 # 6. الواجهة الرئيسية
 # -----------------------------------------------------------------------------
 st.markdown("<h3 style='text-align: right;'>📂 منطقة الرفع والمطابقة</h3>", unsafe_allow_html=True)
-
-# تعديل هنا لقبول ملفات Excel بجانب Word
-uploaded_files = st.file_uploader("ارفع ملفي الشهر السابق والحالي معاً", type=['docx', 'xlsx', 'xls'], accept_multiple_files=True)
+uploaded_files = st.file_uploader("ارفع ملفي الشهر السابق والحالي معاً", type=['docx'], accept_multiple_files=True)
 
 col_opts1, col_opts2, col_opts3 = st.columns(3)
 with col_opts1: comparison_mode = st.radio("🎯 نوع المقارنة:", ["النوع الأول", "النوع الثاني", "النوع الثالث", "النموذج الرابع (المستحق فقط)"], horizontal=True)
@@ -675,20 +671,8 @@ swap_files = st.checkbox("🔄 **عكس الملفين يدوياً (القدي�
 if st.button("بدء المقارنة الذكية واستخراج المتغيرات والأوراق"):
     if len(uploaded_files) == 2:
         with st.spinner('جاري التحليل وعزل الحالات تلقائياً...'):
-            docs = []
-            dates = []
-            
-            # معالجة كل ملف بناءً على امتداده
-            for file in uploaded_files:
-                if file.name.lower().endswith('.docx'):
-                    doc = Document(file)
-                else:
-                    doc = load_excel_as_dummy_doc(file)
-                docs.append(doc)
-                dates.append(extract_document_date(doc))
-                
-            doc1, doc2 = docs[0], docs[1]
-            date1, date2 = dates[0], dates[1]
+            doc1, doc2 = Document(uploaded_files[0]), Document(uploaded_files[1])
+            date1, date2 = extract_document_date(doc1), extract_document_date(doc2)
             
             file_a_is_older = (date1 < date2) if (date1 and date2) else True
             if swap_files: file_a_is_older = not file_a_is_older
