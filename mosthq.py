@@ -27,8 +27,8 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align: right;'>نظام المقارنة الشامل والذكي (يدعم Word و Excel) 📄📊</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: right;'>تمت ترقية النظام ليدعم استخراج ومطابقة البيانات من ملفات الوورد والإكسل بذكاء، مع تدوير العناوين وتنسيق الصفوف التبادلية بدقة فائقة.</p>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: right;'>نظام المقارنة الشامل والذكي (يدعم Word و Excel بكافة شيتاته) 📄📊</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: right;'>تمت ترقية النظام ليدعم استخراج ومطابقة البيانات من كافة أوراق العمل (Sheets) في ملفات الإكسل والوورد بذكاء ودقة فائقة.</p>", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
 # 1. محرك الاستشعار الزمني (مخصص لملفات الوورد)
@@ -135,30 +135,36 @@ def extract_eligible_only_records(doc):
     return records
 
 # -----------------------------------------------------------------------------
-# 2.5. محرك الاستخراج الديناميكي (Excel) الجديد بالكامل
+# 2.5. محرك الاستخراج الديناميكي الشامل (Excel بكافة الشيتات)
 # -----------------------------------------------------------------------------
 def extract_records_from_excel(file_path, mode, card_type="old"):
     """
-    يستخرج البيانات من كافة صفحات الإكسل ويربطها تلقائياً بالهيكل القياسي للنظام
+    تم التحديث لضمان استخراج البيانات من جميع الشيتات في الملف
     """
     records = {}
     try:
-        excel_data = pd.read_excel(file_path, sheet_name=None, dtype=str)
+        # تحويل الملف إلى BytesIO لضمان عدم استهلاك الـ Buffer وقراءة الملف بشكل كامل
+        file_bytes = file_path.getvalue() if hasattr(file_path, 'getvalue') else file_path.read()
+        excel_data = pd.read_excel(BytesIO(file_bytes), sheet_name=None, dtype=str)
+        
         for sheet_name, df in excel_data.items():
             df = df.dropna(how='all', axis=0).dropna(how='all', axis=1)
             if df.empty: continue
             
-            # 1. البحث عن صف العناوين بذكاء (لتخطي الترويسات العلوية إن وجدت)
+            # إعادة ضبط الفهرس لضمان البحث الدقيق عن العناوين في كل شيت
+            df = df.reset_index(drop=True)
+            
+            # 1. البحث عن صف العناوين بذكاء
             header_idx = -1
-            for i, row in df.head(15).iterrows():
+            for i, row in df.head(20).iterrows():
                 row_str = ' '.join([str(val) for val in row.values if pd.notna(val)])
                 if 'بطاق' in row_str or 'اسم' in row_str:
                     header_idx = i
                     break
             
             if header_idx != -1:
-                df.columns = df.loc[header_idx]
-                df = df.drop(index=header_idx)
+                df.columns = df.iloc[header_idx]
+                df = df.iloc[header_idx + 1:]
                 
             df.columns = [str(col).strip() for col in df.columns]
             
@@ -173,28 +179,28 @@ def extract_records_from_excel(file_path, mode, card_type="old"):
                 elif 'مستحق' in col_s: col_elig = col
                 elif 'محجوب' in col_s: col_with = col
             
-            if not col_card or not col_name: continue # تخطي الصفحة إذا لم تكن تحتوي على بيانات العوائل
+            # تخطي الصفحة إذا لم تكن تحتوي على بيانات العوائل الأساسية
+            if not col_card or not col_name: continue 
             
-            # 3. إدراج البيانات في القاموس المعتمد
+            # 3. إدراج البيانات في القاموس المعتمد (يتراكم مع باقي الشيتات)
             for _, row in df.iterrows():
                 try:
                     card = str(row[col_card]).strip()
-                    # استبعاد الحقول الفارغة أو التي لا تحتوي أرقام بطاقة
                     if not card or card == 'nan' or not any(c.isdigit() for c in card): continue
                     
                     name = str(row[col_name]).strip()
-                    seq = str(row[col_seq]).strip() if col_seq and pd.notna(row[col_seq]) else "-"
+                    seq = str(row[col_seq]).strip() if col_seq and pd.notna(row.get(col_seq)) else "-"
                     
                     if mode == "النموذج الرابع (المستحق فقط)":
-                        elig_val = ''.join(filter(str.isdigit, str(row[col_elig]))) if col_elig else '0'
+                        elig_val = ''.join(filter(str.isdigit, str(row[col_elig]))) if col_elig and pd.notna(row.get(col_elig)) else '0'
                         records[card] = {
                             "seq": seq, "name": name, "total": 0,
                             "eligible": int(elig_val) if elig_val else 0, "withheld": 0
                         }
                     else:
-                        tot_val = ''.join(filter(str.isdigit, str(row[col_tot]))) if col_tot else '0'
-                        elig_val = ''.join(filter(str.isdigit, str(row[col_elig]))) if col_elig else '0'
-                        with_val = ''.join(filter(str.isdigit, str(row[col_with]))) if col_with else '0'
+                        tot_val = ''.join(filter(str.isdigit, str(row[col_tot]))) if col_tot and pd.notna(row.get(col_tot)) else '0'
+                        elig_val = ''.join(filter(str.isdigit, str(row[col_elig]))) if col_elig and pd.notna(row.get(col_elig)) else '0'
+                        with_val = ''.join(filter(str.isdigit, str(row[col_with]))) if col_with and pd.notna(row.get(col_with)) else '0'
                         
                         records[card] = {
                             "seq": seq, "name": name,
@@ -530,7 +536,6 @@ def create_word_stats_report(counters, filename_base):
 # 6. الواجهة الرئيسية
 # -----------------------------------------------------------------------------
 st.markdown("<h3 style='text-align: right;'>📂 منطقة الرفع والمطابقة (يدعم ملفات Word و Excel)</h3>", unsafe_allow_html=True)
-# **تحديث مهم: السماح برفع ملفات الإكسل بجانب الوورد**
 uploaded_files = st.file_uploader("ارفع ملفي الشهر السابق والحالي معاً", type=['docx', 'xlsx', 'xls'], accept_multiple_files=True)
 
 col_opts1, col_opts2, col_opts3 = st.columns(3)
