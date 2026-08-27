@@ -135,46 +135,45 @@ def extract_eligible_only_records(doc):
     return records
 
 # -----------------------------------------------------------------------------
-# 2.5. محرك الاستخراج الديناميكي الشامل (Excel بكافة الشيتات)
+# 2.5. محرك الاستخراج الديناميكي الشامل (Excel بكافة الشيتات) - مزود بالإشعارات
 # -----------------------------------------------------------------------------
 def extract_records_from_excel(file_path, mode, card_type="old"):
     records = {}
     try:
-        # 1. التأكد التام من عودة مؤشر الملف للبداية (مهم جداً في Streamlit)
         if hasattr(file_path, 'seek'):
             file_path.seek(0)
             
-        # 2. استخدام ExcelFile لضمان حصر وقراءة كافة الشيتات دون استثناء
         xls = pd.ExcelFile(file_path)
+        sheet_names = xls.sheet_names
         
-        for sheet_name in xls.sheet_names:
-            # قراءة الشيت الحالي
-            df = pd.read_excel(xls, sheet_name=sheet_name, dtype=str)
+        # إشعار لمعرفة عدد الشيتات المكتشفة في الملف
+        st.toast(f"تم اكتشاف {len(sheet_names)} شيت في الملف: {file_path.name}", icon="🔍")
+        
+        for sheet_name in sheet_names:
+            # استخدام header=None لمنع اختفاء العناوين في الصف الأول
+            df = pd.read_excel(xls, sheet_name=sheet_name, dtype=str, header=None)
             
-            # إزالة الصفوف والأعمدة الفارغة بالكامل
             df = df.dropna(how='all', axis=0).dropna(how='all', axis=1)
             if df.empty: 
                 continue
             
             df = df.reset_index(drop=True)
             
-            # 3. البحث عن صف العناوين بمرونة أعلى (نبحث في أول 50 صف لضمان التقاطه)
+            # البحث عن صف العناوين
             header_idx = -1
             for i in range(min(50, len(df))):
                 row_str = ' '.join([str(val) for val in df.iloc[i].values if pd.notna(val)])
-                # نبحث عن الكلمات المفتاحية للعناوين
-                if 'بطاق' in row_str or 'اسم' in row_str:
+                if 'بطاق' in row_str or 'اسم' in row_str or 'تسلسل' in row_str:
                     header_idx = i
                     break
             
             if header_idx != -1:
                 df.columns = df.iloc[header_idx]
                 df = df.iloc[header_idx + 1:]
-                
-            # 4. تنظيف عنيف لأسماء الأعمدة (إزالة المسافات، الفواصل، والأسطر المخفية)
+            
+            # تنظيف عنيف لأسماء الأعمدة
             df.columns = [str(col).replace('\n', '').replace('\r', '').replace(' ', '').strip() for col in df.columns]
             
-            # ربط الأعمدة
             col_seq, col_name, col_card, col_tot, col_elig, col_with = None, None, None, None, None, None
             for col in df.columns:
                 if col == 'ت' or 'تسلسل' in col: col_seq = col
@@ -184,11 +183,13 @@ def extract_records_from_excel(file_path, mode, card_type="old"):
                 elif 'مستحق' in col: col_elig = col
                 elif 'محجوب' in col: col_with = col
             
-            # تخطي الصفحة إذا لم يتم العثور على عمود الاسم والبطاقة
+            # إذا لم يجد العناوين، سيخبرك بذلك على الشاشة بدلاً من التخطي الصامت
             if not col_card or not col_name: 
+                st.toast(f"تم تخطي الشيت '{sheet_name}' لعدم وجود عمود 'الاسم' أو 'البطاقة'", icon="⚠️")
                 continue 
             
-            # إدراج البيانات (تتراكم من جميع الشيتات)
+            # إدراج البيانات
+            records_added = 0
             for _, row in df.iterrows():
                 try:
                     card = str(row[col_card]).strip()
@@ -215,8 +216,12 @@ def extract_records_from_excel(file_path, mode, card_type="old"):
                             "eligible": int(elig_val) if elig_val else 0,
                             "withheld": int(with_val) if with_val else 0
                         }
+                    records_added += 1
                 except Exception:
                     continue
+            
+            st.toast(f"تمت قراءة {records_added} عائلة من الشيت '{sheet_name}'", icon="✅")
+            
     except Exception as e:
         st.error(f"حدث خطأ أثناء قراءة ملف الإكسل: {str(e)}")
         
