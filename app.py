@@ -31,9 +31,16 @@ st.markdown("<h1 style='text-align: right;'>نظام المقارنة الشام
 st.markdown("<p style='text-align: right;'>تمت إعادة صياغة وهيكلة ملف الـ Word الناتج برمجياً وتدوير العناوين وتنسيق الصفوف التبادلية بدقة فائقة.</p>", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 1. محرك الاستشعار الزمني
+# 1. محرك الاستشعار الزمني المحدث (يدعم الملفات ككائنات)
 # -----------------------------------------------------------------------------
-def extract_document_date(doc):
+def extract_document_date(file_obj):
+    file_ext = file_obj.name.split('.')[-1].lower()
+    if file_ext != 'docx':
+        return None  # الإكسل لا يحتوي على فقرات نصية قياسية للتاريخ بنفس صيغة الوورد
+
+    doc = Document(file_obj)
+    file_obj.seek(0) # إعادة مؤشر القراءة للبداية بعد استخدام الملف
+    
     patterns = [
         r"([A-Za-z]+,\s+[A-Za-z]+\s+\d{1,2},\s+\d{4})", 
         r"(\d{1,2}[/-]\d{1,2}[/-]\d{4})",               
@@ -73,56 +80,268 @@ def extract_document_date(doc):
     return None
 
 # -----------------------------------------------------------------------------
-# 2. محرك الاستخراج الدقيق
+# 2. محرك الاستخراج الدقيق المحدث (يدعم Word و Excel - للنماذج 1، 2، و3)
 # -----------------------------------------------------------------------------
-def extract_clean_records(doc, card_type="old"):
+def extract_clean_records(file_obj, card_type="old"):
     records = {}
-    for para in doc.paragraphs:
-        text = para.text.strip()
-        if not text: continue
-        cells = [c.strip() for c in text.split(',')]
-        if len(cells) >= 6 and any(char.isdigit() for char in cells[0]) and any('\u0600' <= char <= '\u06FF' for char in cells[3]):
-            try:
-                withheld, eligible, total, name = int(cells[0]), int(cells[1]), int(cells[2]), cells[3]
-                old_card = cells[4]
-                new_card = cells[5] if len(cells) > 5 else old_card
-                selected_card = old_card if card_type == "old" else new_card
-                seq = cells[6] if len(cells) > 6 else "-"
-                if selected_card:
-                    records[selected_card] = {"seq": seq, "name": name, "total": total, "eligible": eligible, "withheld": withheld}
-            except ValueError: continue
+    file_ext = file_obj.name.split('.')[-1].lower()
+    rows_data = []
 
-    if not records:
+    if file_ext == 'docx':
+        doc = Document(file_obj)
+        file_obj.seek(0)
+        
+        # استخراج الفقرات (للأنماط التي لا تعتمد على الجداول)
+        for para in doc.paragraphs:
+            text = para.text.strip()
+            if not text: continue
+            cells = [c.strip() for c in text.split(',')]
+            if len(cells) >= 6 and any(char.isdigit() for char in cells[0]) and any('\u0600' <= char <= '\u06FF' for char in cells[3]):
+                try:
+                    withheld, eligible, total, name = int(cells[0]), int(cells[1]), int(cells[2]), cells[3]
+                    old_card = cells[4]
+                    new_card = cells[5] if len(cells) > 5 else old_card
+                    selected_card = old_card if card_type == "old" else new_card
+                    seq = cells[6] if len(cells) > 6 else "-"
+                    if selected_card:
+                        records[selected_card] = {"seq": seq, "name": name, "total": total, "eligible": eligible, "withheld": withheld}
+                except ValueError: continue
+
+        # استخراج جداول الوورد
         for table in doc.tables:
             for row in table.rows:
                 cells = [cell.text.strip().replace('\n', ' ') for cell in row.cells]
-                if not any(cells) or "المركز" in "".join(cells) or "الوكيل" in "".join(cells) or "اسم رب" in "".join(cells): continue
-                name_idx = -1
-                max_len = 0
-                for i, c in enumerate(cells):
-                    if any('\u0600' <= char <= '\u06FF' for char in c) and not any(char.isdigit() for char in c):
-                        if len(c) > max_len: max_len, name_idx = len(c), i
-                if name_idx == -1: continue
-                card_indices = [i for i, c in enumerate(cells) if c.isdigit() and len(c) >= 5]
-                if not card_indices: continue
+                rows_data.append(cells)
                 
-                old_card = cells[card_indices[0]]
-                new_card = cells[card_indices[-1]] if len(card_indices) > 1 else old_card
-                selected_card = old_card if card_type == "old" else new_card
-                seq = "-"
-                for i in range(len(cells)-1, card_indices[-1], -1):
-                    if cells[i].isdigit():
-                        seq = cells[i]
-                        break
-                digit_cells = [int(cells[i]) for i in range(name_idx) if cells[i].isdigit()]
-                if len(digit_cells) >= 3: withheld, eligible, total = digit_cells[0], digit_cells[1], digit_cells[2]
-                elif len(digit_cells) == 2: withheld, eligible, total = 0, digit_cells[0], digit_cells[1]
-                else: continue
-                records[selected_card] = {"seq": seq, "name": cells[name_idx], "total": total, "eligible": eligible, "withheld": withheld}
+    elif file_ext == 'xlsx':
+        xls = pd.ExcelFile(file_obj)
+        file_obj.seek(0)
+        for sheet_name in xls.sheet_names:
+            df_excel = pd.read_excel(xls, sheet_name=sheet_name, header=None)
+            for row in df_excel.values:
+                cells = []
+                for cell in row:
+                    if pd.isna(cell):
+                        continue
+                    if isinstance(cell, float) and cell.is_integer():
+                        cells.append(str(int(cell)))
+                    else:
+                        cells.append(str(cell).strip().replace('\n', ' '))
+                rows_data.append(cells)
+
+    # تطبيق نفس منطق التنظيف والاستخراج المعتاد على الأسطر إذا لم يتم سحب البيانات من الفقرات
+    if not records:
+        for cells in rows_data:
+            if not any(cells) or "المركز" in "".join(cells) or "الوكيل" in "".join(cells) or "اسم رب" in "".join(cells): continue
+            name_idx = -1
+            max_len = 0
+            for i, c in enumerate(cells):
+                if any('\u0600' <= char <= '\u06FF' for char in c) and not any(char.isdigit() for char in c):
+                    if len(c) > max_len: max_len, name_idx = len(c), i
+            if name_idx == -1: continue
+            card_indices = [i for i, c in enumerate(cells) if c.isdigit() and len(c) >= 5]
+            if not card_indices: continue
+            
+            old_card = cells[card_indices[0]]
+            new_card = cells[card_indices[-1]] if len(card_indices) > 1 else old_card
+            selected_card = old_card if card_type == "old" else new_card
+            seq = "-"
+            for i in range(len(cells)-1, card_indices[-1], -1):
+                if cells[i].isdigit():
+                    seq = cells[i]
+                    break
+            digit_cells = [int(cells[i]) for i in range(name_idx) if cells[i].isdigit()]
+            if len(digit_cells) >= 3: withheld, eligible, total = digit_cells[0], digit_cells[1], digit_cells[2]
+            elif len(digit_cells) == 2: withheld, eligible, total = 0, digit_cells[0], digit_cells[1]
+            else: continue
+            records[selected_card] = {"seq": seq, "name": cells[name_idx], "total": total, "eligible": eligible, "withheld": withheld}
+            
     return records
 
 # -----------------------------------------------------------------------------
-# 3. محرك المقارنة الذكي الثابت
+# 2.5. محرك الاستخراج المخصص للنموذج الرابع المحدث (المستحق فقط)
+# -----------------------------------------------------------------------------
+def extract_eligible_only_records(file_obj):
+    records = {}
+    file_ext = file_obj.name.split('.')[-1].lower()
+    rows_data = []
+
+    if file_ext == 'docx':
+        doc = Document(file_obj)
+        file_obj.seek(0)
+        for table in doc.tables:
+            for row in table.rows:
+                cells = [cell.text.strip().replace('\n', ' ') for cell in row.cells]
+                rows_data.append(cells)
+                
+    elif file_ext == 'xlsx':
+        xls = pd.ExcelFile(file_obj)
+        file_obj.seek(0)
+        for sheet_name in xls.sheet_names:
+            df_excel = pd.read_excel(xls, sheet_name=sheet_name, header=None)
+            for row in df_excel.values:
+                cells = []
+                for cell in row:
+                    if pd.isna(cell):
+                        continue
+                    if isinstance(cell, float) and cell.is_integer():
+                        cells.append(str(int(cell)))
+                    else:
+                        cells.append(str(cell).strip().replace('\n', ' '))
+                rows_data.append(cells)
+
+    for cells in rows_data:
+        # التأكد من وجود 6 أعمدة على الأقل حسب الترتيب المطلوب
+        if len(cells) >= 6:
+            if "اسم" in cells[3] or "المركز" in cells[0]: continue
+            
+            seq = cells[0]
+            old_card = cells[2]
+            name = cells[3]
+            eligible_str = cells[5]
+            
+            if old_card.isdigit() and len(old_card) >= 4:
+                try:
+                    el_val = int(''.join(filter(str.isdigit, eligible_str)))
+                    records[old_card] = {
+                        "seq": seq,
+                        "name": name,
+                        "total": 0,       # تصفير الكلي لتجاهله
+                        "eligible": el_val,
+                        "withheld": 0     # تصفير المحجوب لتجاهله
+                    }
+                except ValueError:
+                    continue
+    return records
+
+# -----------------------------------------------------------------------------
+# 2.6. محرك الاستخراج الذكي بالتعرف التلقائي على العناوين (النموذج الخامس)
+#      يفهم أعمدة أي جدول (وورد أو إكسل) عبر قراءة صف العناوين مهما كان ترتيبها
+# -----------------------------------------------------------------------------
+def _smart_match_header_role(header_text):
+    h = str(header_text).strip()
+    if not h:
+        return None
+    if "تسلسل" in h or h == "ت" or h.startswith("ت ") or h.startswith("ت(") or h.startswith("ت-"):
+        return "seq"
+    if "قديم" in h or "سابق" in h:
+        return "old_card"
+    if "جديد" in h or "حديث" in h:
+        return "new_card"
+    if "محجوب" in h:
+        return "withheld"
+    if "مستحق" in h:
+        return "eligible"
+    if "كلي" in h:
+        return "total"
+    if "بطاقة" in h:
+        return "card_generic"
+    if "اسم" in h:
+        return "name"
+    return None
+
+def _smart_detect_header_map(rows_data, max_scan=3):
+    for r_idx in range(min(max_scan, len(rows_data))):
+        role_map = {}
+        for c_idx, cell in enumerate(rows_data[r_idx]):
+            role = _smart_match_header_role(cell)
+            if role and role not in role_map:
+                role_map[role] = c_idx
+        has_card = any(k in role_map for k in ("old_card", "new_card", "card_generic"))
+        has_amount = any(k in role_map for k in ("total", "eligible", "withheld"))
+        if "name" in role_map and has_card and has_amount:
+            return role_map, r_idx
+    return None, -1
+
+def _smart_clean_card(value):
+    v = str(value).strip()
+    if not v.isdigit() or len(v) < 4:
+        return ""
+    return v
+
+def _smart_to_int(value):
+    digits = "".join(filter(str.isdigit, str(value)))
+    return int(digits) if digits else 0
+
+def extract_records_smart(file_obj, card_type="old"):
+    records = {}
+    file_ext = file_obj.name.split('.')[-1].lower()
+    tables_rows = []
+
+    if file_ext == 'docx':
+        doc = Document(file_obj)
+        file_obj.seek(0)
+        for table in doc.tables:
+            rows = [[cell.text.strip().replace('\n', ' ') for cell in row.cells] for row in table.rows]
+            tables_rows.append(rows)
+
+    elif file_ext == 'xlsx':
+        xls = pd.ExcelFile(file_obj)
+        file_obj.seek(0)
+        for sheet_name in xls.sheet_names:
+            df_excel = pd.read_excel(xls, sheet_name=sheet_name, header=None)
+            rows = []
+            for row in df_excel.values:
+                cells = []
+                for cell in row:
+                    if pd.isna(cell):
+                        cells.append("")
+                    elif isinstance(cell, float) and cell.is_integer():
+                        cells.append(str(int(cell)))
+                    else:
+                        cells.append(str(cell).strip().replace('\n', ' '))
+                rows.append(cells)
+            tables_rows.append(rows)
+
+    last_role_map = None
+    for rows in tables_rows:
+        role_map, header_row_idx = _smart_detect_header_map(rows)
+        if role_map is not None:
+            last_role_map = role_map
+        elif last_role_map is not None:
+            # جدول/ورقة تكمل بيانات سابقة دون تكرار صف العناوين (مثل الورقة الثانية في نفس الملف)
+            role_map = last_role_map
+            header_row_idx = -1
+        else:
+            continue
+
+        old_idx = role_map.get("old_card", role_map.get("card_generic"))
+        new_idx = role_map.get("new_card", role_map.get("card_generic"))
+        name_idx = role_map.get("name")
+        total_idx = role_map.get("total")
+        eligible_idx = role_map.get("eligible")
+        withheld_idx = role_map.get("withheld")
+        seq_idx = role_map.get("seq")
+
+        for r_idx in range(header_row_idx + 1, len(rows)):
+            cells = rows[r_idx]
+            max_idx = len(cells) - 1
+            if name_idx is None or name_idx > max_idx:
+                continue
+            name = cells[name_idx].strip()
+            if not name or not any('؀' <= ch <= 'ۿ' for ch in name):
+                continue
+            if any(kw in name for kw in ("الإجمالي", "الاجمالي", "المجموع", "اجمالي", "إجمالي")):
+                continue
+
+            old_card = _smart_clean_card(cells[old_idx]) if old_idx is not None and old_idx <= max_idx else ""
+            new_card = _smart_clean_card(cells[new_idx]) if new_idx is not None and new_idx <= max_idx else ""
+
+            selected_card = (old_card or new_card) if card_type == "old" else (new_card or old_card)
+            if not selected_card:
+                continue
+
+            total = _smart_to_int(cells[total_idx]) if total_idx is not None and total_idx <= max_idx else 0
+            eligible = _smart_to_int(cells[eligible_idx]) if eligible_idx is not None and eligible_idx <= max_idx else 0
+            withheld = _smart_to_int(cells[withheld_idx]) if withheld_idx is not None and withheld_idx <= max_idx else 0
+            seq_val = cells[seq_idx].strip() if seq_idx is not None and seq_idx <= max_idx and cells[seq_idx].strip() else "-"
+
+            records[selected_card] = {"seq": seq_val, "name": name, "total": total, "eligible": eligible, "withheld": withheld}
+
+    return records
+
+# -----------------------------------------------------------------------------
+# 3. محرك المقارنة الذكي الثابت (محدث لدعم النموذج الرابع)
 # -----------------------------------------------------------------------------
 def process_comparison(old_data, new_data, mode, card_col_name, matching_engine):
     results = []
@@ -142,25 +361,29 @@ def process_comparison(old_data, new_data, mode, card_col_name, matching_engine)
             d_tot = new_v["total"] - old_v["total"]
             d_elig = new_v["eligible"] - old_v["eligible"]
             d_with = new_v["withheld"] - old_v["withheld"]
-            is_changed = d_tot != 0 or d_elig != 0 or d_with != 0
             
             target_seq = new_v["seq"] if skip_seq_matching else old_v["seq"]
             notes = []
             
-            if old_v["name"] != new_v["name"]:
-                notes.append(f"تم تغيير الاسم / السابق / {old_v['name']}")
-                is_changed = True
-            
-            if new_v["withheld"] == new_v["total"] and new_v["total"] > 0 and d_with > 0:
-                notes.append("حجب كلي ❌")
+            # شروط النموذج الرابع (المستحق فقط)
+            if mode == "النموذج الرابع (المستحق فقط)":
+                is_changed = (d_elig != 0)
+                if d_elig > 0: notes.append(f"زيادة مستحق ({d_elig}) ➕")
+                elif d_elig < 0: notes.append(f"نقصان مستحق ({abs(d_elig)}) ➖")
+                referral_text = " | ".join(notes) if notes else ""
             else:
-                if d_with > 0: notes.append(f"تم حجب {d_with} نفر ➖")
-                elif d_with < 0: notes.append(f"تم رفع الحجب عن {abs(d_with)} نفر ➕")
-            
-            if d_tot > 0: notes.append("إضافة طفل 👶")
-            elif d_tot < 0: notes.append(f"نقصان {abs(d_tot)} نفر")
-            
-            referral_text = " | ".join(notes) if notes else ("تحديث بيانات" if is_changed else "")
+                is_changed = d_tot != 0 or d_elig != 0 or d_with != 0
+                if old_v["name"] != new_v["name"]:
+                    notes.append(f"تم تغيير الاسم / السابق / {old_v['name']}")
+                    is_changed = True
+                if new_v["withheld"] == new_v["total"] and new_v["total"] > 0 and d_with > 0:
+                    notes.append("حجب كلي ❌")
+                else:
+                    if d_with > 0: notes.append(f"تم حجب {d_with} نفر ➖")
+                    elif d_with < 0: notes.append(f"تم رفع الحجب عن {abs(d_with)} نفر ➕")
+                if d_tot > 0: notes.append("إضافة طفل 👶")
+                elif d_tot < 0: notes.append(f"نقصان {abs(d_tot)} نفر")
+                referral_text = " | ".join(notes) if notes else ("تحديث بيانات" if is_changed else "")
             
             if is_changed:
                 if d_tot != 0:
@@ -179,25 +402,31 @@ def process_comparison(old_data, new_data, mode, card_col_name, matching_engine)
                     if d_with > 0: counters["inc_withheld"] += d_with
                     else: counters["dec_withheld"] += abs(d_with)
                 
+                total_val = "-" if mode == "النموذج الرابع (المستحق فقط)" else new_v["total"]
+                withheld_val = "-" if mode == "النموذج الرابع (المستحق فقط)" else new_v["withheld"]
+
                 base_dict = {
                     "التسلسل": target_seq, "اسم رب الأسرة": new_v["name"], card_col_name: card,
-                    "الأفراد الكلية": new_v["total"], "الأفراد المستحقة": new_v["eligible"], 
-                    "الأفراد المحجوبين": new_v["withheld"], "الإحالة": referral_text, "meta_card": card
+                    "الأفراد الكلية": total_val, "الأفراد المستحقة": new_v["eligible"], 
+                    "الأفراد المحجوبين": withheld_val, "الإحالة": referral_text, "meta_card": card
                 }
                 
                 results_type_1_reference.append({**base_dict, "meta_status": "modified"})
                 
-                if mode == "النوع الأول" or mode == "النوع الثالث":
+                if mode in ["النوع الأول", "النوع الثالث", "النموذج الرابع (المستحق فقط)", "النموذج الخامس (كشف تلقائي بالعناوين)"]:
                     results.append({**base_dict, "meta_status": "modified", "meta_sort": 1})
                 elif mode == "النوع الثاني":
                     results.append({
                         "التسلسل": target_seq, "اسم رب الأسرة": old_v["name"], card_col_name: card, "الحالة": "السابق",
-                        "الأفراد الكلية": old_v["total"], "الأفراد المستحقة": old_v["eligible"], "الأفراد المحجوبين": old_v["withheld"],
+                        "الأفراد الكلية": "-" if mode == "النموذج الرابع (المستحق فقط)" else old_v["total"], 
+                        "الأفراد المستحقة": old_v["eligible"], 
+                        "الأفراد المحجوبين": "-" if mode == "النموذج الرابع (المستحق فقط)" else old_v["withheld"],
                         "الإحالة": "", "meta_status": "type2_old", "meta_card": card, "meta_sort": 1
                     })
                     results.append({
                         "التسلسل": target_seq, "اسم رب الأسرة": new_v["name"], card_col_name: card, "الحالة": "الحديث",
-                        "الأفراد الكلية": new_v["total"], "الأفراد المستحقة": new_v["eligible"], "الأفراد المحجوبين": new_v["withheld"],
+                        "الأفراد الكلية": total_val, "الأفراد المستحقة": new_v["eligible"], 
+                        "الأفراد المحجوبين": withheld_val,
                         "الإحالة": referral_text, "meta_status": "type2_new", "meta_card": card, "meta_sort": 2
                     })
             elif mode == "النوع الثالث":
@@ -217,9 +446,12 @@ def process_comparison(old_data, new_data, mode, card_col_name, matching_engine)
             counters["dec_withheld"] += old_v["withheld"]
             counters["net_withheld"] -= old_v["withheld"]
             
+            total_val = "-" if mode == "النموذج الرابع (المستحق فقط)" else old_v["total"]
+            withheld_val = "-" if mode == "النموذج الرابع (المستحق فقط)" else old_v["withheld"]
+
             base_row = {"التسلسل": old_v["seq"], "اسم رب الأسرة": old_v["name"], card_col_name: card,
-                        "الأفراد الكلية": old_v["total"], "الأفراد المستحقة": old_v["eligible"], 
-                        "الأفراد المحجوبين": old_v["withheld"], "الإحالة": "عائلة محذوفة ❌", "meta_card": card}
+                        "الأفراد الكلية": total_val, "الأفراد المستحقة": old_v["eligible"], 
+                        "الأفراد المحجوبين": withheld_val, "الإحالة": "عائلة محذوفة ❌", "meta_card": card}
             results_type_1_reference.append({**base_row, "meta_status": "deleted"})
             if mode == "النوع الثاني": results.append({**base_row, "الحالة": "محذوف", "meta_status": "deleted", "meta_card": card, "meta_sort": 1})
             else: results.append({**base_row, "meta_status": "deleted", "meta_sort": 1})
@@ -234,9 +466,12 @@ def process_comparison(old_data, new_data, mode, card_col_name, matching_engine)
             counters["inc_withheld"] += new_v["withheld"]
             counters["net_withheld"] += new_v["withheld"]
             
+            total_val = "-" if mode == "النموذج الرابع (المستحق فقط)" else new_v["total"]
+            withheld_val = "-" if mode == "النموذج الرابع (المستحق فقط)" else new_v["withheld"]
+
             base_row = {"التسلسل": new_v["seq"], "اسم رب الأسرة": new_v["name"], card_col_name: card,
-                        "الأفراد الكلية": new_v["total"], "الأفراد المستحقة": new_v["eligible"], 
-                        "الأفراد المحجوبين": new_v["withheld"], "الإحالة": "عائلة مضافة ✨", "meta_card": card}
+                        "الأفراد الكلية": total_val, "الأفراد المستحقة": new_v["eligible"], 
+                        "الأفراد المحجوبين": withheld_val, "الإحالة": "عائلة مضافة ✨", "meta_card": card}
             results_type_1_reference.append({**base_row, "meta_status": "added"})
             if mode == "النوع الثاني": results.append({**base_row, "الحالة": "مضاف", "meta_status": "added", "meta_card": card, "meta_sort": 1})
             else: results.append({**base_row, "meta_status": "added", "meta_sort": 1})
@@ -244,7 +479,7 @@ def process_comparison(old_data, new_data, mode, card_col_name, matching_engine)
     return results, results_type_1_reference, counters
 
 # -----------------------------------------------------------------------------
-# 4. دوال التصدير المحدثة والمصقولة لملف الوورد الناتج باحترافية كاملة
+# 4. دوال التصدير المحدثة والمصقولة لملف الوورد الناتج
 # -----------------------------------------------------------------------------
 def set_cell_background(cell, color_hex):
     tcPr = cell._tc.get_or_add_tcPr()
@@ -316,7 +551,7 @@ def create_word_table_report(doc_df, title, mode, card_col_name, old_data, new_d
         add_page_number(p_footer)
         
     def append_table_to_doc(target_doc, df_to_write, table_title):
-        agent_name = new_file_name.replace(".docx", "")
+        agent_name = new_file_name.replace(".docx", "").replace(".xlsx", "")
         agent_name = re.sub(r'(FOOD|FLOUR)', '', agent_name, flags=re.IGNORECASE)
         agent_name = agent_name.strip("- ").strip()
         
@@ -324,7 +559,6 @@ def create_word_table_report(doc_df, title, mode, card_col_name, old_data, new_d
         banner_table.alignment = WD_TABLE_ALIGNMENT.CENTER
         banner_cell = banner_table.rows[0].cells[0]
         
-        # 🟦 تعديل مأكد: العنوان الأعلى مضلل بلون أزرق كحلي غامق جداً وفخم
         set_cell_background(banner_cell, "111E38")
         
         tcPr = banner_cell._tc.get_or_add_tcPr()
@@ -363,7 +597,6 @@ def create_word_table_report(doc_df, title, mode, card_col_name, old_data, new_d
         bidiVisual = parse_xml(f'<w:bidiVisual {nsdecls("w")}/>')
         tblPr.append(bidiVisual)
         
-        # 🗺️ خريطة الأبعاد المعدلة برمجياً بدقة عالية (تمت زيادة عرض عمود التسلسل بنسبة 50% ليصبح 0.55)
         width_map = {
             "التسلسل": 0.55,
             "اسم رب الأسرة": 3.0,
@@ -380,9 +613,8 @@ def create_word_table_report(doc_df, title, mode, card_col_name, old_data, new_d
             display_name = col
             if col == "اسم رب الأسرة": display_name = "اسم المواطن"
             elif col == "الإحالة": display_name = "الحالة"
-            elif col == card_col_name: display_name = "رقم البطاقة" # تصحيح المسمى لإلغاء أي لبس أو تداخل بالبيانات
+            elif col == card_col_name: display_name = "رقم البطاقة"
             elif col == "التسلسل": display_name = "ت"
-            # 📄 تجريد الكلمات لتصبح كلمة واحدة فقط كما طلبت
             elif col == "الأفراد الكلية": display_name = "الكلي"
             elif col == "الأفراد المستحقة": display_name = "المستحق"
             elif col == "الأفراد المحجوبين": display_name = "المحجوب"
@@ -391,7 +623,6 @@ def create_word_table_report(doc_df, title, mode, card_col_name, old_data, new_d
             set_cell_width(hdr_cells[i], width_map.get(col, 1.0))
             set_cell_background(hdr_cells[i], "E8ECEF")
             
-            # 🔄 قلب العينات الـ 3 كلمات المحددة بمقدار 90 درجة في صف العناوين
             if col in ["الأفراد الكلية", "الأفراد المستحقة", "الأفراد المحجوبين"]:
                 tcPr = hdr_cells[i]._tc.get_or_add_tcPr()
                 textDirection = parse_xml(f'<w:textDirection {nsdecls("w")} w:val="btLr"/>')
@@ -400,7 +631,6 @@ def create_word_table_report(doc_df, title, mode, card_col_name, old_data, new_d
             p = hdr_cells[i].paragraphs[0]
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
             if p.runs:
-                # حجم خط صف العناوين = 14 تماماً وموحد
                 format_run(p.runs[0], font_name="Microsoft Sans Serif", size_pt=14, color_rgb=RGBColor(44, 62, 80), bold=True)
         
         prev_cells = None
@@ -408,7 +638,6 @@ def create_word_table_report(doc_df, title, mode, card_col_name, old_data, new_d
             row_cells = table.add_row().cells
             status = row.get("meta_status", "normal")
             
-            # 🏁 هندسة الصفوف التبادلية بحرفية (صف أبيض، صف رصاصي فاتح) لراحة العين أثناء المراجعة
             if mode == "النوع الثاني":
                 bg_color = "FFFFFF" if (row_idx // 2) % 2 == 0 else "F2F4F4"
             else:
@@ -432,9 +661,9 @@ def create_word_table_report(doc_df, title, mode, card_col_name, old_data, new_d
                         run = p.add_run(part)
                         part_color = RGBColor(0, 0, 0)
                         if "طفل" in part: part_color = RGBColor(0, 0, 255)
-                        elif "رفع" in part: part_color = RGBColor(0, 128, 0)
+                        elif "رفع" in part or "زيادة مستحق" in part: part_color = RGBColor(0, 128, 0)
                         elif "حجب كلي" in part: part_color = RGBColor(128, 0, 0)
-                        elif "حجب" in part: part_color = RGBColor(255, 0, 0)
+                        elif "حجب" in part or "نقصان مستحق" in part: part_color = RGBColor(255, 0, 0)
                         elif "مضافة" in part: part_color = RGBColor(0, 128, 0)
                         elif "محذوفة" in part: part_color = RGBColor(255, 0, 0)
                         
@@ -471,7 +700,7 @@ def create_word_table_report(doc_df, title, mode, card_col_name, old_data, new_d
                                 
                             prev_cells[m_idx].merge(row_cells[m_idx])
                             set_cell_width(prev_cells[m_idx], width_map.get(merge_col, 1.0))
-                            set_cell_background(prev_cells[m_idx], bg_color) # الحفاظ التام على تناسق اللون التبادلي حتى بعد عملية الدمج
+                            set_cell_background(prev_cells[m_idx], bg_color) 
                             
                             prev_cells[m_idx].text = ""
                             p_merge = prev_cells[m_idx].paragraphs[0]
@@ -502,6 +731,7 @@ def create_word_table_report(doc_df, title, mode, card_col_name, old_data, new_d
     cases_to_extract = [
         ("حالات تغيير اسم رب الأسرة", "تم تغيير الاسم"), ("حالات إضافة طفل", "إضافة طفل"),
         ("حالات حجب كلي", "حجب كلي"), ("حالات حجب نفر", "تم حجب"), ("حالات رفع الحجب", "تم رفع الحجب"),
+        ("حالات زيادة مستحق", "زيادة مستحق"), ("حالات نقصان مستحق", "نقصان مستحق"),
         ("العوائل المضافة", "عائلة مضافة"), ("العوائل المحذوفة", "عائلة محذوفة")
     ]
     for case_title, keyword in cases_to_extract:
@@ -533,8 +763,8 @@ def style_all_types(doc_df, old_data, new_data, card_col_name, mode):
         notes = str(row.get("الإحالة", ""))
         
         if "تم تغيير الاسم" in notes: styles.loc[idx, "الإحالة"] = 'color: #2980B9; font-weight: bold;'
-        elif "إضافة طفل" in notes: styles.loc[idx, "الإحالة"] = 'color: #1ABC9C; font-weight: bold;'
-        elif "حجب كلي" in notes or "تم حجب" in notes: styles.loc[idx, "الإحالة"] = 'color: #C0392B; font-weight: bold;'
+        elif "إضافة طفل" in notes or "زيادة مستحق" in notes: styles.loc[idx, "الإحالة"] = 'color: #1ABC9C; font-weight: bold;'
+        elif "حجب كلي" in notes or "تم حجب" in notes or "نقصان مستحق" in notes: styles.loc[idx, "الإحالة"] = 'color: #C0392B; font-weight: bold;'
         elif "تم رفع الحجب" in notes or "مضافة" in notes: styles.loc[idx, "الإحالة"] = 'color: #27AE60; font-weight: bold;'
         
         if status == "type2_old": styles.loc[idx, "الحالة"] = 'background-color: #F5F5F5; font-weight: bold; color: #7F8C8D;'
@@ -544,9 +774,9 @@ def style_all_types(doc_df, old_data, new_data, card_col_name, mode):
 
         if status in ["modified", "type2_old", "type2_new"] and card in old_data and card in new_data:
             o_val, n_val = old_data[card], new_data[card]
-            if o_val["total"] != n_val["total"]: styles.loc[idx, "الأفراد الكلية"] = 'background-color: #FDE0DC; font-weight: bold; color: #C0392B;'
+            if mode != "النموذج الرابع (المستحق فقط)" and o_val["total"] != n_val["total"]: styles.loc[idx, "الأفراد الكلية"] = 'background-color: #FDE0DC; font-weight: bold; color: #C0392B;'
             if o_val["eligible"] != n_val["eligible"]: styles.loc[idx, "الأفراد المستحقة"] = 'background-color: #FDE0DC; font-weight: bold; color: #C0392B;'
-            if o_val["withheld"] != n_val["withheld"]: styles.loc[idx, "الأفراد المحجوبين"] = 'background-color: #FDE0DC; font-weight: bold; color: #C0392B;'
+            if mode != "النموذج الرابع (المستحق فقط)" and o_val["withheld"] != n_val["withheld"]: styles.loc[idx, "الأفراد المحجوبين"] = 'background-color: #FDE0DC; font-weight: bold; color: #C0392B;'
     return styles
 
 def create_word_stats_report(counters, filename_base):
@@ -574,10 +804,10 @@ def create_word_stats_report(counters, filename_base):
 # 6. الواجهة الرئيسية
 # -----------------------------------------------------------------------------
 st.markdown("<h3 style='text-align: right;'>📂 منطقة الرفع والمطابقة</h3>", unsafe_allow_html=True)
-uploaded_files = st.file_uploader("ارفع ملفي الشهر السابق والحالي معاً", type=['docx'], accept_multiple_files=True)
+uploaded_files = st.file_uploader("ارفع ملفي الشهر السابق والحالي معاً", type=['docx', 'xlsx'], accept_multiple_files=True)
 
 col_opts1, col_opts2, col_opts3 = st.columns(3)
-with col_opts1: comparison_mode = st.radio("🎯 نوع المقارنة:", ["النوع الأول", "النوع الثاني", "النوع الثالث"], horizontal=True)
+with col_opts1: comparison_mode = st.radio("🎯 نوع المقارنة:", ["النوع الأول", "النوع الثاني", "النوع الثالث", "النموذج الرابع (المستحق فقط)", "النموذج الخامس (كشف تلقائي بالعناوين)"], horizontal=True)
 with col_opts2: card_choice_ui = st.radio("💳 البطاقة المعتمدة:", ["رقم البطاقة القديم", "رقم البطاقة الحديث"], horizontal=True)
 with col_opts3: matching_engine = st.radio("⚙️ محرك المطابقة المستهدف:", ["المحرك القياسي", "محرك تخطي التسلسل (بطاقة فقط)"], horizontal=True)
 
@@ -588,23 +818,32 @@ swap_files = st.checkbox("🔄 **عكس الملفين يدوياً (القدي�
 if st.button("بدء المقارنة الذكية واستخراج المتغيرات والأوراق"):
     if len(uploaded_files) == 2:
         with st.spinner('جاري التحليل وعزل الحالات تلقائياً...'):
-            doc1, doc2 = Document(uploaded_files[0]), Document(uploaded_files[1])
-            date1, date2 = extract_document_date(doc1), extract_document_date(doc2)
+            file1, file2 = uploaded_files[0], uploaded_files[1]
+            date1, date2 = extract_document_date(file1), extract_document_date(file2)
             
             file_a_is_older = (date1 < date2) if (date1 and date2) else True
             if swap_files: file_a_is_older = not file_a_is_older
                 
             if file_a_is_older:
-                old_doc, new_doc = doc1, doc2
-                old_name, new_name = uploaded_files[0].name, uploaded_files[1].name
+                file_old, file_new = file1, file2
+                old_name, new_name = file1.name, file2.name
             else:
-                old_doc, new_doc = doc2, doc1
-                old_name, new_name = uploaded_files[1].name, uploaded_files[0].name
+                file_old, file_new = file2, file1
+                old_name, new_name = file2.name, file1.name
 
             st.markdown(f"<div class='date-badge'>الملف المعتمد كـ <span class='old'>السابق: ({old_name})</span> | الملف المعتمد كـ <span class='new'>الحديث: ({new_name})</span></div>", unsafe_allow_html=True)
             
-            old_data = extract_clean_records(old_doc, card_type=card_type_param)
-            new_data = extract_clean_records(new_doc, card_type=card_type_param)
+            # توجيه النظام حسب نوع النموذج
+            if comparison_mode == "النموذج الرابع (المستحق فقط)":
+                old_data = extract_eligible_only_records(file_old)
+                new_data = extract_eligible_only_records(file_new)
+                card_col_name = "رقم البطاقة القديم"
+            elif comparison_mode == "النموذج الخامس (كشف تلقائي بالعناوين)":
+                old_data = extract_records_smart(file_old, card_type=card_type_param)
+                new_data = extract_records_smart(file_new, card_type=card_type_param)
+            else:
+                old_data = extract_clean_records(file_old, card_type=card_type_param)
+                new_data = extract_clean_records(file_new, card_type=card_type_param)
             
             results, results_ref, counters = process_comparison(old_data, new_data, comparison_mode, card_col_name, matching_engine)
             
