@@ -82,15 +82,27 @@ def extract_document_date(file_obj):
 # -----------------------------------------------------------------------------
 # 2. محرك الاستخراج الدقيق المحدث (يدعم Word و Excel - للنماذج 1، 2، و3)
 # -----------------------------------------------------------------------------
+# أقصى حجم أسرة منطقي: أي رقم أكبر من هذا في الكلي/المستحق/المحجوب يدل شبه مؤكد
+# على انزياح أعمدة (مثال: قراءة رقم البطاقة نفسه كأنه "الكلي") وليس بيانات حقيقية.
+MAX_PLAUSIBLE_FAMILY_SIZE = 50
+
+def _is_plausible_record(selected_card, total, eligible, withheld):
+    if total > MAX_PLAUSIBLE_FAMILY_SIZE or eligible > MAX_PLAUSIBLE_FAMILY_SIZE or withheld > MAX_PLAUSIBLE_FAMILY_SIZE:
+        return False
+    if str(total) == str(selected_card) or str(eligible) == str(selected_card):
+        return False
+    return True
+
 def extract_clean_records(file_obj, card_type="old"):
     records = {}
+    skipped = 0
     file_ext = file_obj.name.split('.')[-1].lower()
     rows_data = []
 
     if file_ext == 'docx':
         doc = Document(file_obj)
         file_obj.seek(0)
-        
+
         # استخراج الفقرات (للأنماط التي لا تعتمد على الجداول)
         for para in doc.paragraphs:
             text = para.text.strip()
@@ -104,6 +116,9 @@ def extract_clean_records(file_obj, card_type="old"):
                     selected_card = old_card if card_type == "old" else new_card
                     seq = cells[6] if len(cells) > 6 else "-"
                     if selected_card:
+                        if not _is_plausible_record(selected_card, total, eligible, withheld):
+                            skipped += 1
+                            continue
                         records[selected_card] = {"seq": seq, "name": name, "total": total, "eligible": eligible, "withheld": withheld}
                 except ValueError: continue
 
@@ -112,7 +127,7 @@ def extract_clean_records(file_obj, card_type="old"):
             for row in table.rows:
                 cells = [cell.text.strip().replace('\n', ' ') for cell in row.cells]
                 rows_data.append(cells)
-                
+
     elif file_ext == 'xlsx':
         xls = pd.ExcelFile(file_obj)
         file_obj.seek(0)
@@ -141,7 +156,7 @@ def extract_clean_records(file_obj, card_type="old"):
             if name_idx == -1: continue
             card_indices = [i for i, c in enumerate(cells) if c.isdigit() and len(c) >= 5]
             if not card_indices: continue
-            
+
             old_card = cells[card_indices[0]]
             new_card = cells[card_indices[-1]] if len(card_indices) > 1 else old_card
             selected_card = old_card if card_type == "old" else new_card
@@ -154,9 +169,12 @@ def extract_clean_records(file_obj, card_type="old"):
             if len(digit_cells) >= 3: withheld, eligible, total = digit_cells[0], digit_cells[1], digit_cells[2]
             elif len(digit_cells) == 2: withheld, eligible, total = 0, digit_cells[0], digit_cells[1]
             else: continue
+            if not _is_plausible_record(selected_card, total, eligible, withheld):
+                skipped += 1
+                continue
             records[selected_card] = {"seq": seq, "name": cells[name_idx], "total": total, "eligible": eligible, "withheld": withheld}
-            
-    return records
+
+    return records, skipped
 
 # -----------------------------------------------------------------------------
 # 2.5. محرك الاستخراج المخصص للنموذج الرابع المحدث (المستحق فقط)
@@ -203,6 +221,8 @@ def extract_eligible_only_records(file_obj):
             if old_card.isdigit() and len(old_card) >= 4:
                 try:
                     el_val = int(''.join(filter(str.isdigit, eligible_str)))
+                    if el_val > MAX_PLAUSIBLE_FAMILY_SIZE or str(el_val) == old_card:
+                        continue  # قيمة تشبه رقم بطاقة أو غير منطقية لعدد أفراد - على الأرجح انزياح أعمدة
                     records[old_card] = {
                         "seq": seq,
                         "name": name,
@@ -713,9 +733,11 @@ if st.button("بدء المقارنة الذكية واستخراج المتغي
                 new_data = extract_eligible_only_records(file_new)
                 card_col_name = "رقم البطاقة القديم"
             else:
-                old_data = extract_clean_records(file_old, card_type=card_type_param)
-                new_data = extract_clean_records(file_new, card_type=card_type_param)
-            
+                old_data, old_skipped = extract_clean_records(file_old, card_type=card_type_param)
+                new_data, new_skipped = extract_clean_records(file_new, card_type=card_type_param)
+                if old_skipped or new_skipped:
+                    st.warning(f"⚠️ تم تجاهل {old_skipped + new_skipped} سطر لأن أرقامه (الكلي/المستحق/المحجوب) غير منطقية (تشبه رقم بطاقة) — على الأرجح خطأ في استخراج بنية أحد الملفين. راجع الملف قبل الاعتماد على النتيجة.")
+
             results, results_ref, counters = process_comparison(old_data, new_data, comparison_mode, card_col_name, matching_engine)
             
             if results:

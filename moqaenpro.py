@@ -76,9 +76,21 @@ def extract_document_date(file_obj, file_name):
 # -----------------------------------------------------------------------------
 # 2. محرك الاستخراج الدقيق والذكي (يدعم Word و Excel المماثل لـ 499-علي رائد عاصي-FOOD_2.xlsx)
 # -----------------------------------------------------------------------------
+# أقصى حجم أسرة منطقي: أي رقم أكبر من هذا في الكلي/المستحق/المحجوب يدل شبه مؤكد
+# على انزياح أعمدة (مثال: قراءة رقم البطاقة نفسه كأنه "الكلي") وليس بيانات حقيقية.
+MAX_PLAUSIBLE_FAMILY_SIZE = 50
+
+def _is_plausible_record(selected_card, total, eligible, withheld):
+    if total > MAX_PLAUSIBLE_FAMILY_SIZE or eligible > MAX_PLAUSIBLE_FAMILY_SIZE or withheld > MAX_PLAUSIBLE_FAMILY_SIZE:
+        return False
+    if str(total) == str(selected_card) or str(eligible) == str(selected_card):
+        return False
+    return True
+
 def extract_clean_records(file_obj, file_name, card_type="old"):
     records = {}
-    
+    skipped = 0
+
     # أولاً: إذا كان الملف المرفوع Excel (مثل ملف 499-علي رائد عاصي-FOOD_2.xlsx)
     if file_name.endswith('.xlsx') or file_name.endswith('.xls'):
         try:
@@ -120,13 +132,16 @@ def extract_clean_records(file_obj, file_name, card_type="old"):
                             selected_card = old_card if card_type == "old" else new_card
                             
                             seq = cells[-1] if cells[-1].isdigit() else "-"
-                            
+
+                            if not _is_plausible_record(selected_card, total, eligible, withheld):
+                                skipped += 1
+                                continue
                             records[selected_card] = {"seq": seq, "name": name_candidate, "total": total, "eligible": eligible, "withheld": withheld}
                         except ValueError: pass
-            return records
+            return records, skipped
         except Exception as e:
             st.error(f"حدث خطأ أثناء معالجة ملف الإكسل: {e}")
-            return {}
+            return {}, 0
 
     # ثانياً: إذا كان الملف Word
     try:
@@ -144,6 +159,9 @@ def extract_clean_records(file_obj, file_name, card_type="old"):
                     selected_card = old_card if card_type == "old" else new_card
                     seq = cells[6] if len(cells) > 6 else "-"
                     if selected_card:
+                        if not _is_plausible_record(selected_card, total, eligible, withheld):
+                            skipped += 1
+                            continue
                         records[selected_card] = {"seq": seq, "name": name, "total": total, "eligible": eligible, "withheld": withheld}
                 except ValueError: continue
 
@@ -173,10 +191,13 @@ def extract_clean_records(file_obj, file_name, card_type="old"):
                     if len(digit_cells) >= 3: withheld, eligible, total = digit_cells[0], digit_cells[1], digit_cells[2]
                     elif len(digit_cells) == 2: withheld, eligible, total = 0, digit_cells[0], digit_cells[1]
                     else: continue
+                    if not _is_plausible_record(selected_card, total, eligible, withheld):
+                        skipped += 1
+                        continue
                     records[selected_card] = {"seq": seq, "name": cells[name_idx], "total": total, "eligible": eligible, "withheld": withheld}
     except Exception as e:
         st.error(f"حدث خطأ أثناء معالجة ملف الوورد: {e}")
-    return records
+    return records, skipped
 
 # -----------------------------------------------------------------------------
 # 3. محرك المقارنة الذكي الثابت
@@ -662,9 +683,12 @@ if st.button("بدء المقارنة الذكية واستخراج المتغي
             # استخراج القيود بديناميكية تامة تدعم بنية ملف الإكسل المرجعي
             old_file.seek(0)
             new_file.seek(0)
-            old_data = extract_clean_records(old_file, old_name, card_type=card_type_param)
-            new_data = extract_clean_records(new_file, new_name, card_type=card_type_param)
-            
+            old_data, old_skipped = extract_clean_records(old_file, old_name, card_type=card_type_param)
+            new_data, new_skipped = extract_clean_records(new_file, new_name, card_type=card_type_param)
+
+            if old_skipped or new_skipped:
+                st.warning(f"⚠️ تم تجاهل {old_skipped + new_skipped} سطر لأن أرقامه (الكلي/المستحق/المحجوب) غير منطقية (تشبه رقم بطاقة) — على الأرجح خطأ في استخراج بنية أحد الملفين. راجع الملف قبل الاعتماد على النتيجة.")
+
             results, results_ref, counters = process_comparison(old_data, new_data, comparison_mode, card_col_name, matching_engine)
             
             if results:
