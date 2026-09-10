@@ -10,6 +10,7 @@ from docx.oxml.ns import nsdecls, qn
 from docx.shared import RGBColor, Pt, Inches
 import re
 from datetime import datetime
+from weasyprint import HTML as WeasyHTML
 
 # =============================================================================
 # إعدادات واجهة المستخدم وتنسيقات الـ CSS للويب
@@ -801,6 +802,110 @@ def create_word_stats_report(counters, filename_base):
     return buffer
 
 # -----------------------------------------------------------------------------
+# 5.5. تقارير PDF أنيقة منفصلة للعوائل المحذوفة والمضافة (تصميم A4 قابل للطباعة)
+# -----------------------------------------------------------------------------
+def _build_split_pdf_html(rows, kind, card_col_name, agent_label):
+    if kind == "deleted":
+        title, subtitle = "تقرير العوائل المحذوفة", f"العوائل الموجودة سابقاً والمفقودة من كشف الوكيل {agent_label} الحالي"
+        accent, accent_soft, accent_dark, badge_label, icon = "#C0392B", "#FDEDEC", "#922B21", "محذوفة", "-"
+    else:
+        title, subtitle = "تقرير العوائل المضافة", f"العوائل الجديدة التي ظهرت في كشف الوكيل {agent_label} الحالي"
+        accent, accent_soft, accent_dark, badge_label, icon = "#1E8449", "#EAFAF1", "#145A32", "مضافة", "+"
+
+    total_people = sum(int(r.get("الأفراد الكلية", 0) or 0) for r in rows)
+    total_eligible = sum(int(r.get("الأفراد المستحقة", 0) or 0) for r in rows)
+    total_withheld = sum(int(r.get("الأفراد المحجوبين", 0) or 0) for r in rows)
+
+    rows_html = ""
+    for i, r in enumerate(rows, start=1):
+        rows_html += f"""
+        <tr>
+          <td class="c-idx">{i}</td>
+          <td class="c-name">{r.get('اسم رب الأسرة', '')}</td>
+          <td class="c-mono">{r.get(card_col_name, '')}</td>
+          <td class="c-num">{r.get('الأفراد الكلية', '')}</td>
+          <td class="c-num c-eligible">{r.get('الأفراد المستحقة', '')}</td>
+          <td class="c-num c-withheld">{r.get('الأفراد المحجوبين', '')}</td>
+        </tr>"""
+
+    return f"""<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>{title}</title>
+<style>
+  :root {{
+    --accent: {accent}; --accent-soft: {accent_soft}; --accent-dark: {accent_dark};
+    --ink: #1B2631; --muted: #7F8C8D; --line: #E5E8E8;
+  }}
+  * {{ box-sizing: border-box; }}
+  html, body {{ margin: 0; padding: 0; font-family: 'Tajawal', 'Arial', sans-serif; color: var(--ink); background: #fff; }}
+  @page {{ size: A4; margin: 14mm 12mm 16mm 12mm; }}
+  .header {{ display: flex; align-items: center; justify-content: space-between; border-bottom: 4px solid var(--accent); padding-bottom: 14px; margin-bottom: 18px; }}
+  .header-flex {{ display: flex; align-items: center; }}
+  .header .titles h1 {{ margin: 0 0 4px 0; font-size: 24px; font-weight: 900; color: var(--accent-dark); }}
+  .header .titles p {{ margin: 0; font-size: 12.5px; color: var(--muted); }}
+  .badge {{ display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; border-radius: 14px; background: var(--accent); color: #fff; font-size: 26px; font-weight: 900; flex-shrink: 0; margin-left: 14px; }}
+  .stats {{ display: flex; gap: 10px; margin-bottom: 20px; }}
+  .stat-card {{ flex: 1; background: var(--accent-soft); border: 1px solid var(--line); border-right: 4px solid var(--accent); border-radius: 10px; padding: 10px 14px; text-align: center; }}
+  .stat-card .num {{ font-size: 22px; font-weight: 900; color: var(--accent-dark); display: block; }}
+  .stat-card .lbl {{ font-size: 11px; color: var(--muted); font-weight: 500; }}
+  table {{ width: 100%; border-collapse: collapse; font-size: 12px; }}
+  thead th {{ background: var(--accent); color: #fff; font-weight: 700; padding: 9px 8px; text-align: center; font-size: 11.5px; }}
+  tbody td {{ padding: 7px 8px; text-align: center; border-bottom: 1px solid var(--line); }}
+  tbody tr:nth-child(even) {{ background: #FAFAFA; }}
+  tbody tr:nth-child(odd) {{ background: var(--accent-soft); opacity: 0.55; }}
+  .c-idx {{ color: var(--muted); width: 32px; }}
+  .c-name {{ text-align: right; font-weight: 600; }}
+  .c-mono {{ font-family: 'Consolas', monospace; direction: ltr; color: #34495E; }}
+  .c-num {{ font-weight: 700; width: 60px; }}
+  .c-eligible {{ color: #196F3D; }}
+  .c-withheld {{ color: #A93226; }}
+  tbody tr {{ page-break-inside: avoid; }}
+  .footer {{ margin-top: 18px; padding-top: 8px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }}
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-flex">
+      <div class="badge">{icon}</div>
+      <div class="titles"><h1>{title}</h1><p>{subtitle}</p></div>
+    </div>
+  </div>
+  <div class="stats">
+    <div class="stat-card"><span class="num">{len(rows)}</span><span class="lbl">عدد العوائل ({badge_label})</span></div>
+    <div class="stat-card"><span class="num">{total_people}</span><span class="lbl">إجمالي الأفراد</span></div>
+    <div class="stat-card"><span class="num">{total_eligible}</span><span class="lbl">الأفراد المستحقة</span></div>
+    <div class="stat-card"><span class="num">{total_withheld}</span><span class="lbl">الأفراد المحجوبين</span></div>
+  </div>
+  <table>
+    <thead><tr><th>ت</th><th>اسم رب الأسرة</th><th>{card_col_name}</th><th>الكلية</th><th>المستحقة</th><th>المحجوبين</th></tr></thead>
+    <tbody>{rows_html}</tbody>
+  </table>
+  <div class="footer">
+    <span>نظام المقارنة الشامل والذكي — وكيل رقم {agent_label}</span>
+    <span>عدد السجلات: {len(rows)}</span>
+  </div>
+</body>
+</html>"""
+
+def create_split_pdf_reports(df_results_full, card_col_name, new_file_name):
+    agent_label = new_file_name.replace(".docx", "").replace(".xlsx", "")
+    agent_label = re.sub(r'(FOOD|FLOUR)', '', agent_label, flags=re.IGNORECASE).strip("- ").strip()
+
+    deleted_rows = df_results_full[df_results_full.get("meta_status") == "deleted"].to_dict("records") if "meta_status" in df_results_full.columns else []
+    added_rows = df_results_full[df_results_full.get("meta_status") == "added"].to_dict("records") if "meta_status" in df_results_full.columns else []
+
+    deleted_pdf, added_pdf = None, None
+    if deleted_rows:
+        deleted_pdf = BytesIO(WeasyHTML(string=_build_split_pdf_html(deleted_rows, "deleted", card_col_name, agent_label)).write_pdf())
+        deleted_pdf.seek(0)
+    if added_rows:
+        added_pdf = BytesIO(WeasyHTML(string=_build_split_pdf_html(added_rows, "added", card_col_name, agent_label)).write_pdf())
+        added_pdf.seek(0)
+    return deleted_pdf, added_pdf
+
+# -----------------------------------------------------------------------------
 # 6. الواجهة الرئيسية
 # -----------------------------------------------------------------------------
 st.markdown("<h3 style='text-align: right;'>📂 منطقة الرفع والمطابقة</h3>", unsafe_allow_html=True)
@@ -884,7 +989,21 @@ if st.button("بدء المقارنة الذكية واستخراج المتغي
                 with col_dl2:
                     word_stats = create_word_stats_report(counters, base_name)
                     st.download_button(label="📊 تحميل تقرير الإحصاء Word", data=word_stats, file_name=f"احصائيات_{base_name}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-                
+
+                deleted_pdf, added_pdf = create_split_pdf_reports(df_results_full, card_col_name, new_name)
+                if deleted_pdf or added_pdf:
+                    col_dl3, col_dl4 = st.columns(2)
+                    with col_dl3:
+                        if deleted_pdf:
+                            st.download_button(label="📕 تحميل تقرير PDF - العوائل المحذوفة", data=deleted_pdf, file_name=f"تقرير_العوائل_المحذوفة_{base_name}.pdf", mime="application/pdf")
+                        else:
+                            st.caption("لا توجد عوائل محذوفة لإصدار تقرير بها.")
+                    with col_dl4:
+                        if added_pdf:
+                            st.download_button(label="📗 تحميل تقرير PDF - العوائل المضافة", data=added_pdf, file_name=f"تقرير_العوائل_المضافة_{base_name}.pdf", mime="application/pdf")
+                        else:
+                            st.caption("لا توجد عوائل مضافة لإصدار تقرير بها.")
+
             else:
                 st.success("🎉 تطابق تام! لا توجد فروقات بين الملفين.")
     else:
