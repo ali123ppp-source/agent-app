@@ -1314,18 +1314,26 @@ if st.button("بدء المقارنة الذكية واستخراج المتغي
                 old_data = extract_eligible_only_records(file_old)
                 new_data = extract_eligible_only_records(file_new)
                 card_col_name = "رقم البطاقة القديم"
-            elif comparison_mode == "النموذج الخامس (كشف تلقائي بالعناوين)":
+            else:
+                # المحرك الذكي بالتعرف على العناوين هو الأدق (يقرأ عناوين
+                # الجدول الفعلية بدل تخمين ترتيب الأعمدة)، فنجربه أولاً لكل
+                # الأنماط. فقط إذا فشل بالكامل (ملف قديم الصياغة بفقرات
+                # بدون جدول عناوين واضح) نرجع للمحرك القديم كخط دفاع أخير —
+                # هذا يمنع تسرب أرقام بطاقات لأعمدة الأعداد (خلل شوهد فعلياً
+                # مع المحرك القديم على بعض تنسيقات الجداول).
                 if card_type_auto:
                     old_data, new_data, card_col_name = extract_matched_by_either_card(extract_records_smart, file_old, file_new)
                 else:
                     old_data = extract_records_smart(file_old, card_type=card_type_param)
                     new_data = extract_records_smart(file_new, card_type=card_type_param)
-            else:
-                if card_type_auto:
-                    old_data, new_data, card_col_name = extract_matched_by_either_card(extract_clean_records, file_old, file_new)
-                else:
-                    old_data = extract_clean_records(file_old, card_type=card_type_param)
-                    new_data = extract_clean_records(file_new, card_type=card_type_param)
+
+                if not old_data or not new_data:
+                    st.caption("⚠️ المحرك الذكي ما لقى جدول بعناوين واضحة بأحد الملفين، تم الرجوع للمحرك القديم.")
+                    if card_type_auto:
+                        old_data, new_data, card_col_name = extract_matched_by_either_card(extract_clean_records, file_old, file_new)
+                    else:
+                        old_data = extract_clean_records(file_old, card_type=card_type_param)
+                        new_data = extract_clean_records(file_new, card_type=card_type_param)
 
             if card_type_auto and comparison_mode not in ("النموذج الرابع (المستحق فقط)",):
                 st.caption("🔎 تم استخدام رقم البطاقة القديم والحديث معاً تلقائياً لتقوية المطابقة بين الملفين.")
