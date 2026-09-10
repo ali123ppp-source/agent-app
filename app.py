@@ -888,7 +888,7 @@ _PDF_CSS = """
   .stat-card .lbl { font-size: 12px; color: var(--accent-dark); font-weight: 600; opacity: 0.85; }
   .table-wrap { border-radius: 18px; overflow: hidden; border: 1px solid var(--glass-border); box-shadow: 0 3px 14px var(--glass-shadow); }
   table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13.5px; }
-  thead th { background: var(--accent); color: #fff; font-weight: 700; padding: 11px 5px; text-align: center; font-size: 12px; white-space: nowrap; }
+  thead th { background: var(--accent); color: #fff; font-weight: 700; padding: 11px 4px; text-align: center; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   tbody td { padding: 9px 5px; text-align: center; border-bottom: 1px solid var(--line-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   tbody tr:nth-child(even) { background: #ffffff; }
   tbody tr:nth-child(odd) { background: var(--accent-soft); }
@@ -909,22 +909,140 @@ _PDF_CSS = """
   .cover .summary-card .lbl { font-size: 11.5px; color: var(--accent-dark); font-weight: 600; }
 """
 
-def _wrap_pdf_document(title, body_html):
+def _wrap_pdf_document(title, body_html, css=None):
     return f"""<!doctype html>
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
 <title>{title}</title>
 {_FONT_LINK}
-<style>{_PDF_CSS}</style>
+<style>{css or _PDF_CSS}</style>
 </head>
 <body>
 {body_html}
 </body>
 </html>"""
 
+# -----------------------------------------------------------------------------
+# نموذج "كانفا": مستوحى من تصميم بطاقات المقارنة الشائعة (خلفية شبكية خفيفة،
+# عنوان كبير عريض، شارة بيضوية عائمة فوق الجدول، وخلفية جدول شفافة بنسبة 5%
+# من لون الحالة). يستخدم نفس ألوان كل حالة (CATEGORY_DEFS) بدون أي تغيير.
+# -----------------------------------------------------------------------------
+_PDF_CSS_CANVA = """
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; font-family: 'Cairo', 'Tajawal', 'Arial', sans-serif; color: #1B2631; background: #fff; }
+  @page { size: A4; margin: 14mm 10mm 14mm 10mm; }
+  body {
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+  .cv-section.with-break { page-break-before: always; }
+  .cv-header { text-align: right; padding-bottom: 14px; margin-bottom: 26px; }
+  .cv-header h1 { margin: 0 0 6px 0; font-size: 32px; font-weight: 800; color: var(--accent-dark); }
+  .cv-header p { margin: 0; font-size: 13px; color: #5D6D7E; font-weight: 600; }
+  .cv-header .cv-agent { display: inline-block; margin-top: 10px; background: #fff; border: 1.5px solid var(--accent); color: var(--accent-dark); border-radius: 999px; padding: 5px 18px; font-size: 12px; font-weight: 700; }
+
+  .cv-stats { display: flex; gap: 10px; margin-bottom: 18px; }
+  .cv-stat-card { flex: 1; text-align: center; padding: 13px 8px; border-radius: 14px; background: var(--accent-soft); border: 1px solid var(--card-border); }
+  .cv-stat-card .num { font-size: 26px; font-weight: 900; color: var(--accent-dark); display: block; line-height: 1.2; }
+  .cv-stat-card .lbl { font-size: 11.5px; color: #34495E; font-weight: 600; }
+
+  .cv-table-frame { position: relative; margin-top: 30px; }
+  .cv-pill-tab { position: absolute; top: -18px; right: 20px; background: var(--accent); color: #fff; border-radius: 999px; padding: 7px 22px; font-size: 12.5px; font-weight: 800; box-shadow: 0 3px 8px var(--card-border); z-index: 2; }
+  .cv-table-wrap { border-radius: 20px; overflow: hidden; border: 1.5px solid var(--accent); background: #fff; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13.5px; }
+  thead th { background: #fff; color: var(--accent-dark); font-weight: 800; padding: 16px 4px 12px; text-align: center; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-bottom: 2.5px solid var(--accent); }
+  tbody td { padding: 9px 5px; text-align: center; border-bottom: 1px solid var(--card-border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: var(--table-tint); }
+  tbody tr:last-child td { border-bottom: none; }
+  .cv-idx { color: var(--accent-dark); font-weight: 700; }
+  .cv-name { text-align: right; font-weight: 700; color: #1B2631; }
+  .cv-mono { font-family: 'Consolas', monospace; direction: ltr; color: var(--accent-dark); font-weight: 600; }
+  .cv-num { font-weight: 800; color: #1B2631; }
+  .cv-eligible { color: #196F3D; }
+  .cv-withheld { color: #A93226; }
+  .cv-referral { text-align: right; color: var(--accent-dark); font-weight: 600; white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.5; }
+  tbody tr { page-break-inside: avoid; }
+
+  .cv-footer { margin-top: 16px; display: flex; justify-content: space-between; font-size: 10.5px; color: #85929E; font-weight: 600; }
+
+  .cv-cover { text-align: center; padding-top: 60px; }
+  .cv-cover h1 { font-size: 36px; color: var(--accent-dark); font-weight: 800; margin-bottom: 18px; }
+  .cv-cover .cv-summary-grid { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 32px; }
+  .cv-cover .cv-summary-card { width: 145px; padding: 16px 8px; border-radius: 16px; background: var(--accent-soft); border: 1px solid var(--card-border); }
+  .cv-cover .cv-summary-card .num { display: block; font-size: 26px; font-weight: 900; color: var(--accent-dark); }
+  .cv-cover .cv-summary-card .lbl { font-size: 11.5px; color: #34495E; font-weight: 600; }
+"""
+
+def _colgroup_html_canva(show_referral):
+    return _colgroup_html(show_referral)
+
+def _category_section_html_canva(rows, cat, card_col_name, agent_label, with_break=False):
+    title, subtitle = cat["title"], cat["subtitle"].format(agent=agent_label)
+    accent, accent_soft, accent_dark = cat["accent"], cat["accent_soft"], cat["accent_dark"]
+    badge_label, show_referral = cat["badge_label"], cat["show_referral"]
+
+    style_vars = (
+        f"--accent:{accent}; --accent-soft:{accent_soft}; --accent-dark:{accent_dark};"
+        f"--table-tint:{_rgba(accent, 0.05)}; --card-border:{_rgba(accent, 0.30)}; --grid-line:{_rgba(accent_dark, 0.045)};"
+    )
+
+    total_people = sum(int(r.get("الأفراد الكلية", 0) or 0) for r in rows)
+    total_eligible = sum(int(r.get("الأفراد المستحقة", 0) or 0) for r in rows)
+    total_withheld = sum(int(r.get("الأفراد المحجوبين", 0) or 0) for r in rows)
+
+    referral_th = "<th>الإحالة</th>" if show_referral else ""
+    rows_html = ""
+    for i, r in enumerate(rows, start=1):
+        referral_td = f"<td class='cv-referral'>{r.get('الإحالة', '')}</td>" if show_referral else ""
+        rows_html += f"""
+        <tr>
+          <td class="cv-idx">{i}</td>
+          <td class="cv-name">{r.get('اسم رب الأسرة', '')}</td>
+          <td class="cv-mono">{r.get(card_col_name, '')}</td>
+          <td class="cv-num">{r.get('الأفراد الكلية', '')}</td>
+          <td class="cv-num cv-eligible">{r.get('الأفراد المستحقة', '')}</td>
+          <td class="cv-num cv-withheld">{r.get('الأفراد المحجوبين', '')}</td>
+          {referral_td}
+        </tr>"""
+
+    section_class = "cv-section with-break" if with_break else "cv-section"
+    return f"""
+    <section class="{section_class}" style="{style_vars}">
+      <div class="cv-header">
+        <h1>{title}</h1>
+        <p>{subtitle}</p>
+        <div class="cv-agent">الوكيل: {agent_label}</div>
+      </div>
+      <div class="cv-stats">
+        <div class="cv-stat-card"><span class="num">{len(rows)}</span><span class="lbl">عدد العوائل ({badge_label})</span></div>
+        <div class="cv-stat-card"><span class="num">{total_people}</span><span class="lbl">إجمالي الأفراد</span></div>
+        <div class="cv-stat-card"><span class="num">{total_eligible}</span><span class="lbl">الأفراد المستحقة</span></div>
+        <div class="cv-stat-card"><span class="num">{total_withheld}</span><span class="lbl">الأفراد المحجوبين</span></div>
+      </div>
+      <div class="cv-table-frame">
+        <div class="cv-pill-tab">{badge_label}</div>
+        <div class="cv-table-wrap">
+          <table>
+            {_colgroup_html_canva(show_referral)}
+            <thead><tr><th>ت</th><th>اسم رب الأسرة</th><th>{card_col_name}</th><th>الكلية</th><th>المستحقة</th><th>المحجوبين</th>{referral_th}</tr></thead>
+            <tbody>{rows_html}</tbody>
+          </table>
+        </div>
+      </div>
+      <div class="cv-footer">
+        <span>نظام المقارنة الشامل والذكي — وكيل رقم {agent_label}</span>
+        <span>عدد السجلات: {len(rows)}</span>
+      </div>
+    </section>"""
+
+def _build_category_pdf_html_canva(rows, cat, card_col_name, agent_label):
+    section = _category_section_html_canva(rows, cat, card_col_name, agent_label, with_break=False)
+    return _wrap_pdf_document(cat["title"], section, css=_PDF_CSS_CANVA)
+
 def _colgroup_html(show_referral):
-    widths = [4, 24, 13, 8, 8, 9, 34] if show_referral else [5, 40, 18, 12, 12, 13]
+    widths = [4, 22, 12, 9, 9, 10, 34] if show_referral else [5, 40, 18, 12, 12, 13]
     return "<colgroup>" + "".join(f'<col style="width:{w}%">' for w in widths) + "</colgroup>"
 
 def _category_section_html(rows, cat, card_col_name, agent_label, with_break=False):
@@ -1006,15 +1124,16 @@ def _matched_categories(df_results_full):
             matched.append((cat, rows))
     return matched
 
-def create_category_pdf_reports(df_results_full, card_col_name, new_file_name):
+def create_category_pdf_reports(df_results_full, card_col_name, new_file_name, template="glass"):
     """يبني تقرير PDF أنيق مستقل لكل حالة من حالات المتغيرات المكتشفة
     (مضافة، محذوفة، حجب كلي/جزئي، رفع حجب، زيادة/نقصان أفراد أو مستحقين،
-    تغيير اسم، تحديث عام) بتصميم زجاجي موحّد، ويُرجع فقط الحالات التي
-    فعلاً لها سجلات ضمن نتيجة المقارنة الحالية."""
+    تغيير اسم، تحديث عام)، ويُرجع فقط الحالات التي فعلاً لها سجلات ضمن
+    نتيجة المقارنة الحالية. template: "glass" (الافتراضي) أو "canva"."""
     agent_label = _derive_agent_label(new_file_name)
+    builder = _build_category_pdf_html_canva if template == "canva" else _build_category_pdf_html
     reports = []
     for cat, rows in _matched_categories(df_results_full):
-        pdf_bytes = WeasyHTML(string=_build_category_pdf_html(rows, cat, card_col_name, agent_label)).write_pdf()
+        pdf_bytes = WeasyHTML(string=builder(rows, cat, card_col_name, agent_label)).write_pdf()
         pdf_buffer = BytesIO(pdf_bytes)
         pdf_buffer.seek(0)
         reports.append({
@@ -1025,41 +1144,64 @@ def create_category_pdf_reports(df_results_full, card_col_name, new_file_name):
         })
     return reports, agent_label
 
-def create_combined_pdf_report(df_results_full, card_col_name, new_file_name):
+def create_combined_pdf_report(df_results_full, card_col_name, new_file_name, template="glass"):
     """يبني ملف PDF واحد يجمع كل حالات المتغيرات المكتشفة معاً: صفحة غلاف
     تلخّص أعداد كل حالة، تليها كل حالة بقسمها المستقل بنفس تصميمها ولونها
-    (كل حالة تبدأ بصفحة جديدة)."""
+    (كل حالة تبدأ بصفحة جديدة). template: "glass" (الافتراضي) أو "canva"."""
     agent_label = _derive_agent_label(new_file_name)
     matched = _matched_categories(df_results_full)
     if not matched:
         return None, agent_label
 
     cover_accent, cover_soft, cover_dark = "#154360", "#EBF5FB", "#0B2E4F"
-    cover_style = (
-        f"--accent:{cover_accent}; --accent-soft:{cover_soft}; --accent-dark:{cover_dark};"
-        f"--glass-bg:{_rgba(cover_accent, 0.14)}; --glass-border:{_rgba(cover_accent, 0.40)};"
-        f"--glass-shadow:{_rgba(cover_dark, 0.20)};"
-    )
-    summary_cards = "".join(
-        f'<div class="summary-card"><span class="num">{len(rows)}</span><span class="lbl">{cat["badge_label"]}</span></div>'
-        for cat, rows in matched
-    )
-    cover_html = f"""
-    <section class="report-section" style="{cover_style}">
-      <div class="cover">
-        <div class="icon-badge" style="margin-bottom:16px;">★</div>
-        <h1>التقرير الشامل لكل حالات المتغيرات</h1>
-        <div class="pills"><div class="agent-pill">الوكيل: {agent_label}</div></div>
-        <div class="summary-grid">{summary_cards}</div>
-      </div>
-    </section>"""
 
-    sections_html = "".join(
-        _category_section_html(rows, cat, card_col_name, agent_label, with_break=True)
-        for cat, rows in matched
-    )
+    if template == "canva":
+        cover_style = (
+            f"--accent:{cover_accent}; --accent-soft:{cover_soft}; --accent-dark:{cover_dark};"
+            f"--card-border:{_rgba(cover_accent, 0.30)}; --grid-line:{_rgba(cover_dark, 0.045)};"
+        )
+        summary_cards = "".join(
+            f'<div class="cv-summary-card"><span class="num">{len(rows)}</span><span class="lbl">{cat["badge_label"]}</span></div>'
+            for cat, rows in matched
+        )
+        cover_html = f"""
+        <section class="cv-section" style="{cover_style}">
+          <div class="cv-cover">
+            <h1>التقرير الشامل لكل حالات المتغيرات</h1>
+            <div class="cv-agent" style="position:static;">الوكيل: {agent_label}</div>
+            <div class="cv-summary-grid">{summary_cards}</div>
+          </div>
+        </section>"""
+        sections_html = "".join(
+            _category_section_html_canva(rows, cat, card_col_name, agent_label, with_break=True)
+            for cat, rows in matched
+        )
+        pdf_bytes = WeasyHTML(string=_wrap_pdf_document("التقرير الشامل", cover_html + sections_html, css=_PDF_CSS_CANVA)).write_pdf()
+    else:
+        cover_style = (
+            f"--accent:{cover_accent}; --accent-soft:{cover_soft}; --accent-dark:{cover_dark};"
+            f"--glass-bg:{_rgba(cover_accent, 0.14)}; --glass-border:{_rgba(cover_accent, 0.40)};"
+            f"--glass-shadow:{_rgba(cover_dark, 0.20)};"
+        )
+        summary_cards = "".join(
+            f'<div class="summary-card"><span class="num">{len(rows)}</span><span class="lbl">{cat["badge_label"]}</span></div>'
+            for cat, rows in matched
+        )
+        cover_html = f"""
+        <section class="report-section" style="{cover_style}">
+          <div class="cover">
+            <div class="icon-badge" style="margin-bottom:16px;">★</div>
+            <h1>التقرير الشامل لكل حالات المتغيرات</h1>
+            <div class="pills"><div class="agent-pill">الوكيل: {agent_label}</div></div>
+            <div class="summary-grid">{summary_cards}</div>
+          </div>
+        </section>"""
+        sections_html = "".join(
+            _category_section_html(rows, cat, card_col_name, agent_label, with_break=True)
+            for cat, rows in matched
+        )
+        pdf_bytes = WeasyHTML(string=_wrap_pdf_document("التقرير الشامل", cover_html + sections_html)).write_pdf()
 
-    pdf_bytes = WeasyHTML(string=_wrap_pdf_document("التقرير الشامل", cover_html + sections_html)).write_pdf()
     pdf_buffer = BytesIO(pdf_bytes)
     pdf_buffer.seek(0)
     return pdf_buffer, agent_label
@@ -1078,6 +1220,8 @@ with col_opts3: matching_engine = st.radio("⚙️ محرك المطابقة ا�
 card_type_param = "old" if card_choice_ui == "رقم البطاقة القديم" else "new"
 card_col_name = card_choice_ui
 swap_files = st.checkbox("🔄 **عكس الملفين يدوياً (القديم يصبح حديثاً والحديث قديماً)**")
+pdf_template_ui = st.radio("🎨 نمط تصميم تقارير PDF:", ["الافتراضي (زجاجي)", "كانفا"], horizontal=True)
+pdf_template = "canva" if pdf_template_ui == "كانفا" else "glass"
 
 if st.button("بدء المقارنة الذكية واستخراج المتغيرات والأوراق"):
     if len(uploaded_files) == 2:
@@ -1149,11 +1293,11 @@ if st.button("بدء المقارنة الذكية واستخراج المتغي
                     word_stats = create_word_stats_report(counters, base_name)
                     st.download_button(label="📊 تحميل تقرير الإحصاء Word", data=word_stats, file_name=f"احصائيات_{base_name}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
-                category_reports, agent_label = create_category_pdf_reports(df_results_full, card_col_name, new_name)
+                category_reports, agent_label = create_category_pdf_reports(df_results_full, card_col_name, new_name, template=pdf_template)
                 if category_reports:
                     st.markdown("<h4 style='text-align: right;'>📁 تقارير PDF منفصلة لكل حالة من حالات المتغيرات</h4>", unsafe_allow_html=True)
 
-                    combined_pdf, _ = create_combined_pdf_report(df_results_full, card_col_name, new_name)
+                    combined_pdf, _ = create_combined_pdf_report(df_results_full, card_col_name, new_name, template=pdf_template)
                     if combined_pdf:
                         st.download_button(label="📚 تحميل تقرير PDF شامل يجمع كل الحالات", data=combined_pdf, file_name=f"التقرير الشامل لـ الوكيل {agent_label}.pdf", mime="application/pdf", key="pdf_combined")
 
