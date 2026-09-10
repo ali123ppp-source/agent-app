@@ -12,24 +12,6 @@ import re
 from datetime import datetime
 from weasyprint import HTML as WeasyHTML
 
-# =============================================================================
-# إعدادات واجهة المستخدم وتنسيقات الـ CSS للويب
-# =============================================================================
-st.set_page_config(page_title="نظام المقارنة المتطور للوكلاء", layout="wide")
-st.markdown("""
-    <style>
-    th, td { text-align: right !important; dir: rtl !important; white-space: nowrap !important; }
-    div.stButton > button { background-color: #2C3E50; color: white; width: 100%; font-weight: bold; border-radius: 8px;}
-    .report-box { background-color: #ECF0F1; padding: 15px; border-radius: 8px; border-right: 5px solid #2C3E50; text-align: right; margin-bottom: 10px;}
-    div[data-testid="stRadio"] > label { font-weight: bold; color: #2C3E50; font-size: 16px; }
-    .date-badge { display: inline-block; padding: 8px 12px; background-color: #F8F9F9; color: #2C3E50; border-radius: 5px; font-weight: bold; font-size: 15px; border: 1px solid #BDC3C7; margin-bottom: 5px; direction: rtl; width: 100%; text-align: center;}
-    .date-badge span.old { color: #C0392B; }
-    .date-badge span.new { color: #27AE60; }
-    </style>
-""", unsafe_allow_html=True)
-
-st.markdown("<h1 style='text-align: right;'>نظام المقارنة الشامل والذكي 📄🔎</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: right;'>تمت إعادة صياغة وهيكلة ملف الـ Word الناتج برمجياً وتدوير العناوين وتنسيق الصفوف التبادلية بدقة فائقة.</p>", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
 # 1. محرك الاستشعار الزمني المحدث (يدعم الملفات ككائنات)
@@ -1378,182 +1360,206 @@ def create_combined_pdf_report(df_results_full, card_col_name, new_file_name, te
     pdf_buffer.seek(0)
     return pdf_buffer, agent_label
 
-# -----------------------------------------------------------------------------
-# 6. الواجهة الرئيسية
-# -----------------------------------------------------------------------------
-st.markdown("<h3 style='text-align: right;'>📂 منطقة الرفع والمطابقة</h3>", unsafe_allow_html=True)
-uploaded_files = st.file_uploader("ارفع ملفي الشهر السابق والحالي معاً", type=['docx', 'xlsx'], accept_multiple_files=True)
 
-columns_confirmed = True  # لا يوجد جدول للتأكد منه إلا بعد رفع ملفين اثنين
-if uploaded_files and len(uploaded_files) == 2:
-    st.markdown("<h4 style='text-align: right;'>👁️ معاينة الأعمدة المكتشفة (تأكد قبل المتابعة)</h4>", unsafe_allow_html=True)
-    preview_cols = st.columns(2)
-    previews_ok = []
-    for pf, pcol in zip(uploaded_files, preview_cols):
-        with pcol:
-            st.markdown(f"**{pf.name}**")
-            preview = preview_columns_for_file(pf)
-            pf.seek(0)
-            if preview is None:
-                st.warning("ما قدرنا نكتشف جدول بعناوين واضحة بهذا الملف — راح يعتمد على محرك احتياطي أقدم عند المقارنة.")
-                previews_ok.append(False)
-            else:
-                st.caption("الأعمدة المكتشفة ← نص العنوان بالملف:")
-                st.dataframe(pd.DataFrame(list(preview["detected"].items()), columns=["الدور", "العنوان بالملف"]), hide_index=True, use_container_width=True)
-                if preview["sample_records"]:
-                    st.caption("عيّنة (أول سجلين):")
-                    st.dataframe(pd.DataFrame(preview["sample_records"]), hide_index=True, use_container_width=True)
-                previews_ok.append(True)
+def main():
+    # =============================================================================
+    # إعدادات واجهة المستخدم وتنسيقات الـ CSS للويب
+    # =============================================================================
+    st.set_page_config(page_title="نظام المقارنة المتطور للوكلاء", layout="wide")
+    st.markdown("""
+        <style>
+        th, td { text-align: right !important; dir: rtl !important; white-space: nowrap !important; }
+        div.stButton > button { background-color: #2C3E50; color: white; width: 100%; font-weight: bold; border-radius: 8px;}
+        .report-box { background-color: #ECF0F1; padding: 15px; border-radius: 8px; border-right: 5px solid #2C3E50; text-align: right; margin-bottom: 10px;}
+        div[data-testid="stRadio"] > label { font-weight: bold; color: #2C3E50; font-size: 16px; }
+        .date-badge { display: inline-block; padding: 8px 12px; background-color: #F8F9F9; color: #2C3E50; border-radius: 5px; font-weight: bold; font-size: 15px; border: 1px solid #BDC3C7; margin-bottom: 5px; direction: rtl; width: 100%; text-align: center;}
+        .date-badge span.old { color: #C0392B; }
+        .date-badge span.new { color: #27AE60; }
+        </style>
+    """, unsafe_allow_html=True)
 
-    if all(previews_ok):
-        columns_confirmed = st.checkbox("✅ أؤكد إن الأعمدة أعلاه مكتشفة صحيح، وأريد أكمل المقارنة")
-        if not columns_confirmed:
-            st.info("علّم المربع أعلاه بعد التأكد من الأعمدة عشان يفعّل زر بدء المقارنة.")
-    else:
-        st.caption("⚠️ ملف واحد أو أكثر ما ظهرت له معاينة — تقدر تكمل عادي وسيتم التحقق من سلامة الأرقام تلقائياً بعد الاستخراج.")
+    st.markdown("<h1 style='text-align: right;'>نظام المقارنة الشامل والذكي 📄🔎</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: right;'>تمت إعادة صياغة وهيكلة ملف الـ Word الناتج برمجياً وتدوير العناوين وتنسيق الصفوف التبادلية بدقة فائقة.</p>", unsafe_allow_html=True)
+    # -----------------------------------------------------------------------------
+    # 6. الواجهة الرئيسية
+    # -----------------------------------------------------------------------------
+    st.markdown("<h3 style='text-align: right;'>📂 منطقة الرفع والمطابقة</h3>", unsafe_allow_html=True)
+    uploaded_files = st.file_uploader("ارفع ملفي الشهر السابق والحالي معاً", type=['docx', 'xlsx'], accept_multiple_files=True)
 
-col_opts1, col_opts2, col_opts3 = st.columns(3)
-with col_opts1: comparison_mode = st.radio("🎯 نوع المقارنة:", ["النوع الأول", "النوع الثاني", "النوع الثالث", "النموذج الرابع (المستحق فقط)", "النموذج الخامس (كشف تلقائي بالعناوين)"], horizontal=True)
-with col_opts2: card_choice_ui = st.radio("💳 البطاقة المعتمدة:", ["تلقائي (الأنسب للمطابقة)", "رقم البطاقة القديم", "رقم البطاقة الحديث"], horizontal=True)
-with col_opts3: matching_engine = st.radio("⚙️ محرك المطابقة المستهدف:", ["المحرك القياسي", "محرك تخطي التسلسل (بطاقة فقط)"], horizontal=True)
-
-card_type_auto = (card_choice_ui == "تلقائي (الأنسب للمطابقة)")
-card_type_param = "old" if card_choice_ui == "رقم البطاقة القديم" else "new"
-card_col_name = card_choice_ui if not card_type_auto else "رقم البطاقة القديم"
-swap_files = st.checkbox("🔄 **عكس الملفين يدوياً (القديم يصبح حديثاً والحديث قديماً)**")
-pdf_template_ui = st.radio("🎨 نمط تصميم تقارير PDF:", ["الافتراضي (زجاجي)", "كانفا"], horizontal=True)
-pdf_template = "canva" if pdf_template_ui == "كانفا" else "glass"
-
-if st.button("بدء المقارنة الذكية واستخراج المتغيرات والأوراق", disabled=not columns_confirmed):
-    if len(uploaded_files) == 2:
-        with st.spinner('جاري التحليل وعزل الحالات تلقائياً...'):
-            file1, file2 = uploaded_files[0], uploaded_files[1]
-            ext1 = file1.name.split('.')[-1].lower()
-            ext2 = file2.name.split('.')[-1].lower()
-
-            if {ext1, ext2} == {"xlsx", "docx"}:
-                # قاعدة ثابتة: عند رفع ملف إكسل وملف وورد معاً، يُعتمد الإكسل دائماً كالملف
-                # السابق (القديم) والوورد دائماً كالملف الحديث، بغض النظر عن التاريخ المستشعر
-                file_a_is_older = (ext1 == "xlsx")
-            else:
-                date1, date2 = extract_document_date(file1), extract_document_date(file2)
-                file_a_is_older = (date1 < date2) if (date1 and date2) else True
-
-            if swap_files: file_a_is_older = not file_a_is_older
-                
-            if file_a_is_older:
-                file_old, file_new = file1, file2
-                old_name, new_name = file1.name, file2.name
-            else:
-                file_old, file_new = file2, file1
-                old_name, new_name = file2.name, file1.name
-
-            st.markdown(f"<div class='date-badge'>الملف المعتمد كـ <span class='old'>السابق: ({old_name})</span> | الملف المعتمد كـ <span class='new'>الحديث: ({new_name})</span></div>", unsafe_allow_html=True)
-            
-            # توجيه النظام حسب نوع النموذج
-            if comparison_mode == "النموذج الرابع (المستحق فقط)":
-                old_data = extract_eligible_only_records(file_old)
-                new_data = extract_eligible_only_records(file_new)
-                card_col_name = "رقم البطاقة القديم"
-            else:
-                # المحرك الذكي بالتعرف على العناوين هو الأدق (يقرأ عناوين
-                # الجدول الفعلية بدل تخمين ترتيب الأعمدة)، فنجربه أولاً لكل
-                # الأنماط. فقط إذا فشل بالكامل (ملف قديم الصياغة بفقرات
-                # بدون جدول عناوين واضح) نرجع للمحرك القديم كخط دفاع أخير —
-                # هذا يمنع تسرب أرقام بطاقات لأعمدة الأعداد (خلل شوهد فعلياً
-                # مع المحرك القديم على بعض تنسيقات الجداول).
-                if card_type_auto:
-                    old_data, new_data, card_col_name = extract_matched_by_either_card(extract_records_smart, file_old, file_new)
+    columns_confirmed = True  # لا يوجد جدول للتأكد منه إلا بعد رفع ملفين اثنين
+    if uploaded_files and len(uploaded_files) == 2:
+        st.markdown("<h4 style='text-align: right;'>👁️ معاينة الأعمدة المكتشفة (تأكد قبل المتابعة)</h4>", unsafe_allow_html=True)
+        preview_cols = st.columns(2)
+        previews_ok = []
+        for pf, pcol in zip(uploaded_files, preview_cols):
+            with pcol:
+                st.markdown(f"**{pf.name}**")
+                preview = preview_columns_for_file(pf)
+                pf.seek(0)
+                if preview is None:
+                    st.warning("ما قدرنا نكتشف جدول بعناوين واضحة بهذا الملف — راح يعتمد على محرك احتياطي أقدم عند المقارنة.")
+                    previews_ok.append(False)
                 else:
-                    old_data = extract_records_smart(file_old, card_type=card_type_param)
-                    new_data = extract_records_smart(file_new, card_type=card_type_param)
+                    st.caption("الأعمدة المكتشفة ← نص العنوان بالملف:")
+                    st.dataframe(pd.DataFrame(list(preview["detected"].items()), columns=["الدور", "العنوان بالملف"]), hide_index=True, use_container_width=True)
+                    if preview["sample_records"]:
+                        st.caption("عيّنة (أول سجلين):")
+                        st.dataframe(pd.DataFrame(preview["sample_records"]), hide_index=True, use_container_width=True)
+                    previews_ok.append(True)
 
-                if not old_data or not new_data:
-                    st.caption("⚠️ المحرك الذكي ما لقى جدول بعناوين واضحة بأحد الملفين، تم الرجوع للمحرك القديم.")
+        if all(previews_ok):
+            columns_confirmed = st.checkbox("✅ أؤكد إن الأعمدة أعلاه مكتشفة صحيح، وأريد أكمل المقارنة")
+            if not columns_confirmed:
+                st.info("علّم المربع أعلاه بعد التأكد من الأعمدة عشان يفعّل زر بدء المقارنة.")
+        else:
+            st.caption("⚠️ ملف واحد أو أكثر ما ظهرت له معاينة — تقدر تكمل عادي وسيتم التحقق من سلامة الأرقام تلقائياً بعد الاستخراج.")
+
+    col_opts1, col_opts2, col_opts3 = st.columns(3)
+    with col_opts1: comparison_mode = st.radio("🎯 نوع المقارنة:", ["النوع الأول", "النوع الثاني", "النوع الثالث", "النموذج الرابع (المستحق فقط)", "النموذج الخامس (كشف تلقائي بالعناوين)"], horizontal=True)
+    with col_opts2: card_choice_ui = st.radio("💳 البطاقة المعتمدة:", ["تلقائي (الأنسب للمطابقة)", "رقم البطاقة القديم", "رقم البطاقة الحديث"], horizontal=True)
+    with col_opts3: matching_engine = st.radio("⚙️ محرك المطابقة المستهدف:", ["المحرك القياسي", "محرك تخطي التسلسل (بطاقة فقط)"], horizontal=True)
+
+    card_type_auto = (card_choice_ui == "تلقائي (الأنسب للمطابقة)")
+    card_type_param = "old" if card_choice_ui == "رقم البطاقة القديم" else "new"
+    card_col_name = card_choice_ui if not card_type_auto else "رقم البطاقة القديم"
+    swap_files = st.checkbox("🔄 **عكس الملفين يدوياً (القديم يصبح حديثاً والحديث قديماً)**")
+    pdf_template_ui = st.radio("🎨 نمط تصميم تقارير PDF:", ["الافتراضي (زجاجي)", "كانفا"], horizontal=True)
+    pdf_template = "canva" if pdf_template_ui == "كانفا" else "glass"
+
+    if st.button("بدء المقارنة الذكية واستخراج المتغيرات والأوراق", disabled=not columns_confirmed):
+        if len(uploaded_files) == 2:
+            with st.spinner('جاري التحليل وعزل الحالات تلقائياً...'):
+                file1, file2 = uploaded_files[0], uploaded_files[1]
+                ext1 = file1.name.split('.')[-1].lower()
+                ext2 = file2.name.split('.')[-1].lower()
+
+                if {ext1, ext2} == {"xlsx", "docx"}:
+                    # قاعدة ثابتة: عند رفع ملف إكسل وملف وورد معاً، يُعتمد الإكسل دائماً كالملف
+                    # السابق (القديم) والوورد دائماً كالملف الحديث، بغض النظر عن التاريخ المستشعر
+                    file_a_is_older = (ext1 == "xlsx")
+                else:
+                    date1, date2 = extract_document_date(file1), extract_document_date(file2)
+                    file_a_is_older = (date1 < date2) if (date1 and date2) else True
+
+                if swap_files: file_a_is_older = not file_a_is_older
+
+                if file_a_is_older:
+                    file_old, file_new = file1, file2
+                    old_name, new_name = file1.name, file2.name
+                else:
+                    file_old, file_new = file2, file1
+                    old_name, new_name = file2.name, file1.name
+
+                st.markdown(f"<div class='date-badge'>الملف المعتمد كـ <span class='old'>السابق: ({old_name})</span> | الملف المعتمد كـ <span class='new'>الحديث: ({new_name})</span></div>", unsafe_allow_html=True)
+
+                # توجيه النظام حسب نوع النموذج
+                if comparison_mode == "النموذج الرابع (المستحق فقط)":
+                    old_data = extract_eligible_only_records(file_old)
+                    new_data = extract_eligible_only_records(file_new)
+                    card_col_name = "رقم البطاقة القديم"
+                else:
+                    # المحرك الذكي بالتعرف على العناوين هو الأدق (يقرأ عناوين
+                    # الجدول الفعلية بدل تخمين ترتيب الأعمدة)، فنجربه أولاً لكل
+                    # الأنماط. فقط إذا فشل بالكامل (ملف قديم الصياغة بفقرات
+                    # بدون جدول عناوين واضح) نرجع للمحرك القديم كخط دفاع أخير —
+                    # هذا يمنع تسرب أرقام بطاقات لأعمدة الأعداد (خلل شوهد فعلياً
+                    # مع المحرك القديم على بعض تنسيقات الجداول).
+                    if card_type_auto:
+                        old_data, new_data, card_col_name = extract_matched_by_either_card(extract_records_smart, file_old, file_new)
+                    else:
+                        old_data = extract_records_smart(file_old, card_type=card_type_param)
+                        new_data = extract_records_smart(file_new, card_type=card_type_param)
+
+                    if not old_data or not new_data:
+                        st.caption("⚠️ المحرك الذكي ما لقى جدول بعناوين واضحة بأحد الملفين، تم الرجوع للمحرك القديم.")
+                        if card_type_auto:
+                            old_data, new_data, card_col_name = extract_matched_by_either_card(extract_clean_records, file_old, file_new)
+                        else:
+                            old_data = extract_clean_records(file_old, card_type=card_type_param)
+                            new_data = extract_clean_records(file_new, card_type=card_type_param)
+                        used_fallback_engine = True
+                    else:
+                        used_fallback_engine = False
+
+                if card_type_auto and comparison_mode not in ("النموذج الرابع (المستحق فقط)",):
+                    st.caption("🔎 تم استخدام رقم البطاقة القديم والحديث معاً تلقائياً لتقوية المطابقة بين الملفين.")
+
+                # حارس سلامة البيانات: نفحص وننظّف قبل لا نكمل، مو بعد ما تطلع
+                # أرقام غلط بالتقارير. أي سجل فاسد يُستبعد نهائياً من الحساب.
+                # لو أول محاولة فيها خلل خطير (فساد منهجي، مو سجل معزول) وما
+                # جربنا المحرك القديم بعد، نجربه كفرصة أخيرة قبل ما نوقف نهائياً.
+                is_safe, clean_old, clean_new, validation_errors = validate_and_clean_pair(old_data, new_data, old_name, new_name)
+                if not is_safe and comparison_mode != "النموذج الرابع (المستحق فقط)" and not used_fallback_engine:
                     if card_type_auto:
                         old_data, new_data, card_col_name = extract_matched_by_either_card(extract_clean_records, file_old, file_new)
                     else:
                         old_data = extract_clean_records(file_old, card_type=card_type_param)
                         new_data = extract_clean_records(file_new, card_type=card_type_param)
-                    used_fallback_engine = True
-                else:
-                    used_fallback_engine = False
+                    is_safe, clean_old, clean_new, validation_errors = validate_and_clean_pair(old_data, new_data, old_name, new_name)
 
-            if card_type_auto and comparison_mode not in ("النموذج الرابع (المستحق فقط)",):
-                st.caption("🔎 تم استخدام رقم البطاقة القديم والحديث معاً تلقائياً لتقوية المطابقة بين الملفين.")
-
-            # حارس سلامة البيانات: نفحص وننظّف قبل لا نكمل، مو بعد ما تطلع
-            # أرقام غلط بالتقارير. أي سجل فاسد يُستبعد نهائياً من الحساب.
-            # لو أول محاولة فيها خلل خطير (فساد منهجي، مو سجل معزول) وما
-            # جربنا المحرك القديم بعد، نجربه كفرصة أخيرة قبل ما نوقف نهائياً.
-            is_safe, clean_old, clean_new, validation_errors = validate_and_clean_pair(old_data, new_data, old_name, new_name)
-            if not is_safe and comparison_mode != "النموذج الرابع (المستحق فقط)" and not used_fallback_engine:
-                if card_type_auto:
-                    old_data, new_data, card_col_name = extract_matched_by_either_card(extract_clean_records, file_old, file_new)
-                else:
-                    old_data = extract_clean_records(file_old, card_type=card_type_param)
-                    new_data = extract_clean_records(file_new, card_type=card_type_param)
-                is_safe, clean_old, clean_new, validation_errors = validate_and_clean_pair(old_data, new_data, old_name, new_name)
-
-            if not is_safe:
-                st.error("❌ توقفت المقارنة: القيم المستخرجة من الملفات غير منطقية (على الأغلب خلل بقراءة الأعمدة)، ولن أكمل الحساب عليها. تفاصيل أول 10 أخطاء:")
-                for err in validation_errors[:10]:
-                    st.markdown(f"- {err}")
-                st.info("راجع ترتيب/عناوين أعمدة الملفين، أو جرب النموذج الخامس (كشف تلقائي بالعناوين) يدوياً.")
-                st.stop()
-
-            old_data, new_data = clean_old, clean_new
-            if validation_errors:
-                with st.expander(f"⚠️ {len(validation_errors)} سجل مستبعد لعدم منطقية قيمه (لن يدخل أي حساب أو تقرير)"):
-                    for err in validation_errors[:20]:
+                if not is_safe:
+                    st.error("❌ توقفت المقارنة: القيم المستخرجة من الملفات غير منطقية (على الأغلب خلل بقراءة الأعمدة)، ولن أكمل الحساب عليها. تفاصيل أول 10 أخطاء:")
+                    for err in validation_errors[:10]:
                         st.markdown(f"- {err}")
+                    st.info("راجع ترتيب/عناوين أعمدة الملفين، أو جرب النموذج الخامس (كشف تلقائي بالعناوين) يدوياً.")
+                    st.stop()
 
-            results, results_ref, counters = process_comparison(old_data, new_data, comparison_mode, card_col_name, matching_engine)
-            
-            if results:
-                results = sorted(results, key=lambda x: (str(x.get("اسم رب الأسرة", "")), x.get("meta_sort", 0)))
-                results_ref = sorted(results_ref, key=lambda x: str(x.get("اسم رب الأسرة", "")))
-                
-                df_results = pd.DataFrame(results)
-                df_results_full = df_results.copy()
-                df_display = df_results.copy()
-                
-                if comparison_mode == "النوع الثاني":
-                    for idx, row in df_display.iterrows():
-                        if row.get("meta_status") == "type2_new":
-                            df_display.at[idx, "التسلسل"], df_display.at[idx, "اسم رب الأسرة"], df_display.at[idx, card_col_name], df_display.at[idx, "الإحالة"] = "", "", "", ""
-                
-                st.markdown(f"<h3 style='text-align: right;'>📋 المخرجات الشاشاتية ({comparison_mode})</h3>", unsafe_allow_html=True)
-                
-                styled_df = df_display.style.apply(lambda d: style_all_types(d, old_data, new_data, card_col_name, comparison_mode), axis=None)
-                if comparison_mode == "النوع الثاني": cols_order = ["التسلسل", "اسم رب الأسرة", card_col_name, "الحالة", "الأفراد الكلية", "الأفراد المستحقة", "الأفراد المحجوبين", "الإحالة"]
-                else: cols_order = ["التسلسل", "اسم رب الأسرة", card_col_name, "الأفراد الكلية", "الأفراد المستحقة", "الأفراد المحجوبين", "الإحالة"]
-                
-                st.dataframe(styled_df, use_container_width=True, hide_index=True, column_order=cols_order)
-                
-                base_name = new_name.rsplit('.', 1)[0]
-                col_dl1, col_dl2 = st.columns(2)
-                with col_dl1:
-                    word_report = create_word_table_report(df_results_full, f"تقرير - {comparison_mode}", comparison_mode, card_col_name, old_data, new_data, new_name)
-                    st.download_button(label="📥 تحميل المخرجات Word بالتصميم الجديد المطور والمقفل", data=word_report, file_name=f"تقرير_{base_name}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-                with col_dl2:
-                    word_stats = create_word_stats_report(counters, base_name)
-                    st.download_button(label="📊 تحميل تقرير الإحصاء Word", data=word_stats, file_name=f"احصائيات_{base_name}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                old_data, new_data = clean_old, clean_new
+                if validation_errors:
+                    with st.expander(f"⚠️ {len(validation_errors)} سجل مستبعد لعدم منطقية قيمه (لن يدخل أي حساب أو تقرير)"):
+                        for err in validation_errors[:20]:
+                            st.markdown(f"- {err}")
 
-                category_reports, agent_label = create_category_pdf_reports(df_results_full, card_col_name, new_name, template=pdf_template)
-                if category_reports:
-                    st.markdown("<h4 style='text-align: right;'>📁 تقارير PDF منفصلة لكل حالة من حالات المتغيرات</h4>", unsafe_allow_html=True)
+                results, results_ref, counters = process_comparison(old_data, new_data, comparison_mode, card_col_name, matching_engine)
 
-                    combined_pdf, _ = create_combined_pdf_report(df_results_full, card_col_name, new_name, template=pdf_template)
-                    if combined_pdf:
-                        st.download_button(label="📚 تحميل تقرير PDF شامل يجمع كل الحالات", data=combined_pdf, file_name=f"التقرير الشامل لـ الوكيل {agent_label}.pdf", mime="application/pdf", key="pdf_combined")
+                if results:
+                    results = sorted(results, key=lambda x: (str(x.get("اسم رب الأسرة", "")), x.get("meta_sort", 0)))
+                    results_ref = sorted(results_ref, key=lambda x: str(x.get("اسم رب الأسرة", "")))
 
-                    pdf_cols = st.columns(2)
-                    for idx, rep in enumerate(category_reports):
-                        with pdf_cols[idx % 2]:
-                            st.download_button(label=rep["button_label"], data=rep["pdf"], file_name=rep["file_name"], mime="application/pdf", key=f"pdf_{rep['key']}")
+                    df_results = pd.DataFrame(results)
+                    df_results_full = df_results.copy()
+                    df_display = df_results.copy()
 
-            else:
-                st.success("🎉 تطابق تام! لا توجد فروقات بين الملفين.")
-    else:
-        st.warning("⚠️ يرجى رفع ملفين اثنين بالضبط للتمكن من بدء المقارنة.")
+                    if comparison_mode == "النوع الثاني":
+                        for idx, row in df_display.iterrows():
+                            if row.get("meta_status") == "type2_new":
+                                df_display.at[idx, "التسلسل"], df_display.at[idx, "اسم رب الأسرة"], df_display.at[idx, card_col_name], df_display.at[idx, "الإحالة"] = "", "", "", ""
+
+                    st.markdown(f"<h3 style='text-align: right;'>📋 المخرجات الشاشاتية ({comparison_mode})</h3>", unsafe_allow_html=True)
+
+                    styled_df = df_display.style.apply(lambda d: style_all_types(d, old_data, new_data, card_col_name, comparison_mode), axis=None)
+                    if comparison_mode == "النوع الثاني": cols_order = ["التسلسل", "اسم رب الأسرة", card_col_name, "الحالة", "الأفراد الكلية", "الأفراد المستحقة", "الأفراد المحجوبين", "الإحالة"]
+                    else: cols_order = ["التسلسل", "اسم رب الأسرة", card_col_name, "الأفراد الكلية", "الأفراد المستحقة", "الأفراد المحجوبين", "الإحالة"]
+
+                    st.dataframe(styled_df, use_container_width=True, hide_index=True, column_order=cols_order)
+
+                    base_name = new_name.rsplit('.', 1)[0]
+                    col_dl1, col_dl2 = st.columns(2)
+                    with col_dl1:
+                        word_report = create_word_table_report(df_results_full, f"تقرير - {comparison_mode}", comparison_mode, card_col_name, old_data, new_data, new_name)
+                        st.download_button(label="📥 تحميل المخرجات Word بالتصميم الجديد المطور والمقفل", data=word_report, file_name=f"تقرير_{base_name}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                    with col_dl2:
+                        word_stats = create_word_stats_report(counters, base_name)
+                        st.download_button(label="📊 تحميل تقرير الإحصاء Word", data=word_stats, file_name=f"احصائيات_{base_name}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+                    category_reports, agent_label = create_category_pdf_reports(df_results_full, card_col_name, new_name, template=pdf_template)
+                    if category_reports:
+                        st.markdown("<h4 style='text-align: right;'>📁 تقارير PDF منفصلة لكل حالة من حالات المتغيرات</h4>", unsafe_allow_html=True)
+
+                        combined_pdf, _ = create_combined_pdf_report(df_results_full, card_col_name, new_name, template=pdf_template)
+                        if combined_pdf:
+                            st.download_button(label="📚 تحميل تقرير PDF شامل يجمع كل الحالات", data=combined_pdf, file_name=f"التقرير الشامل لـ الوكيل {agent_label}.pdf", mime="application/pdf", key="pdf_combined")
+
+                        pdf_cols = st.columns(2)
+                        for idx, rep in enumerate(category_reports):
+                            with pdf_cols[idx % 2]:
+                                st.download_button(label=rep["button_label"], data=rep["pdf"], file_name=rep["file_name"], mime="application/pdf", key=f"pdf_{rep['key']}")
+
+                else:
+                    st.success("🎉 تطابق تام! لا توجد فروقات بين الملفين.")
+        else:
+            st.warning("⚠️ يرجى رفع ملفين اثنين بالضبط للتمكن من بدء المقارنة.")
+
+
+if __name__ == "__main__":
+    main()
