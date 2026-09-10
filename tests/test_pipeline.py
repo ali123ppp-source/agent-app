@@ -8,7 +8,7 @@ import app
 
 
 def _run_pipeline(old_file, new_file, mode="النوع الأول"):
-    old_data, new_data, card_col_name = app.extract_matched_by_either_card(
+    old_data, new_data, card_col_name, _, _ = app.extract_matched_by_either_card(
         app.extract_records_smart, old_file, new_file
     )
     is_safe, old_data, new_data, errors = app.validate_and_clean_pair(old_data, new_data, "old", "new")
@@ -74,3 +74,48 @@ def test_canva_template_also_generates_valid_pdf(agent921_files):
     reports, _ = app.create_category_pdf_reports(df, card_col_name, new_file.name, template="canva")
     assert len(reports) > 0
     assert reports[0]["pdf"].getvalue()[:4] == b"%PDF"
+
+
+def test_category_section_html_escapes_malicious_name_field():
+    """اسم عائلة فيه HTML/JS خام (مصدره ملف مستخدم، مو موثوق) ما يصير جزء
+    فعلي من الصفحة — لازم يظهر كنص حرفي مهرّب، مو يكسر بنية الجدول أو
+    يحقن سكربت."""
+    cat = app.CATEGORY_DEFS[0]
+    malicious_row = {
+        "اسم رب الأسرة": "<script>alert(1)</script>",
+        "رقم البطاقة": "1234",
+        "الأفراد الكلية": 3,
+        "الأفراد المستحقة": 2,
+        "الأفراد المحجوبين": 1,
+        "الإحالة": "<img src=x onerror=alert(2)>",
+    }
+    html_out = app._category_section_html([malicious_row], cat, "رقم البطاقة", "وكيل \"921\" <b>")
+    assert "<script>alert(1)</script>" not in html_out
+    assert "&lt;script&gt;" in html_out
+    assert "onerror=" not in html_out or "&lt;img" in html_out
+    assert "<b>" not in html_out  # agent_label نفسه المهرّب ما يفلت أيضاً
+
+
+def test_extract_matched_by_either_card_raises_no_exception_on_empty_files():
+    """ملفان بدون أي جدول بيانات: الاستخراج يرجع قواميس فاضية بهدوء (مو
+    استثناء) — طبقة main() فوقه هي اللي تقرر توقف العرض للمستخدم بدل ما
+    تكمل حساب على بيانات فاضية وتعرض 'تطابق تام' مضلل."""
+    import io
+    from docx import Document
+
+    def empty_docx():
+        buf = io.BytesIO()
+        doc = Document()
+        doc.add_paragraph("لا يوجد جدول هنا إطلاقاً.")
+        doc.save(buf)
+        buf.seek(0)
+        buf.name = "empty.docx"
+        return buf
+
+    old_data, new_data, _, old_dupes, new_dupes = app.extract_matched_by_either_card(
+        app.extract_records_smart, empty_docx(), empty_docx()
+    )
+    assert old_data == {}
+    assert new_data == {}
+    assert old_dupes == []
+    assert new_dupes == []

@@ -9,8 +9,23 @@ from docx.oxml import parse_xml, OxmlElement
 from docx.oxml.ns import nsdecls, qn
 from docx.shared import RGBColor, Pt, Inches
 import re
+import html
 from datetime import datetime
 from weasyprint import HTML as WeasyHTML
+
+# أرقام هندية-عربية وفارسية شائعة بالملفات الرسمية — لازم تتوحّد لأرقام
+# لاتينية قبل استخدامها كمفتاح مطابقة، وإلا "١٢٣٤٥٦٧" و"1234567" يُعتبران
+# بطاقتين مختلفتين لنفس العائلة (يظهر محذوف بملف ومضاف بالثاني بالغلط).
+_DIGIT_TRANSLATION = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
+
+def normalize_digits(value):
+    return str(value).translate(_DIGIT_TRANSLATION)
+
+def esc(value):
+    """يهرّب أي نص مصدره الملف (اسم، رقم بطاقة، نص إحالة) قبل حقنه داخل
+    HTML — يمنع كسر تخطيط الجدول أو حقن ماركب غير مقصود لو احتوى اسم على
+    أحرف زي &lt; أو &amp;."""
+    return html.escape(str(value), quote=True)
 
 
 # -----------------------------------------------------------------------------
@@ -67,13 +82,14 @@ def extract_document_date(file_obj):
 # -----------------------------------------------------------------------------
 def extract_clean_records(file_obj, card_type="old"):
     records = {}
+    duplicates = []
     file_ext = file_obj.name.split('.')[-1].lower()
     rows_data = []
 
     if file_ext == 'docx':
         doc = Document(file_obj)
         file_obj.seek(0)
-        
+
         # استخراج الفقرات (للأنماط التي لا تعتمد على الجداول)
         for para in doc.paragraphs:
             text = para.text.strip()
@@ -82,15 +98,18 @@ def extract_clean_records(file_obj, card_type="old"):
             if len(cells) >= 6 and any(char.isdigit() for char in cells[0]) and any('\u0600' <= char <= '\u06FF' for char in cells[3]):
                 try:
                     withheld, eligible, total, name = int(cells[0]), int(cells[1]), int(cells[2]), cells[3]
-                    old_card = cells[4]
-                    new_card = cells[5] if len(cells) > 5 else old_card
+                    old_card = normalize_digits(cells[4])
+                    new_card = normalize_digits(cells[5]) if len(cells) > 5 else old_card
                     selected_card = old_card if card_type == "old" else new_card
                     alt_card = new_card if card_type == "old" else old_card
                     if alt_card == selected_card:
                         alt_card = ""
                     seq = cells[6] if len(cells) > 6 else "-"
                     if selected_card:
-                        records[selected_card] = {"seq": seq, "name": name, "total": total, "eligible": eligible, "withheld": withheld, "alt_card": alt_card}
+                        if selected_card in records:
+                            duplicates.append((selected_card, name))
+                        else:
+                            records[selected_card] = {"seq": seq, "name": name, "total": total, "eligible": eligible, "withheld": withheld, "alt_card": alt_card}
                 except ValueError: continue
 
         # استخراج جداول الوورد
@@ -98,7 +117,7 @@ def extract_clean_records(file_obj, card_type="old"):
             for row in table.rows:
                 cells = [cell.text.strip().replace('\n', ' ') for cell in row.cells]
                 rows_data.append(cells)
-                
+
     elif file_ext == 'xlsx':
         xls = pd.ExcelFile(file_obj)
         file_obj.seek(0)
@@ -119,6 +138,7 @@ def extract_clean_records(file_obj, card_type="old"):
     if not records:
         for cells in rows_data:
             if not any(cells) or "المركز" in "".join(cells) or "الوكيل" in "".join(cells) or "اسم رب" in "".join(cells): continue
+            cells = [normalize_digits(c) if c.strip() and c.strip().isdigit() else c for c in cells]
             name_idx = -1
             max_len = 0
             for i, c in enumerate(cells):
@@ -127,7 +147,7 @@ def extract_clean_records(file_obj, card_type="old"):
             if name_idx == -1: continue
             card_indices = [i for i, c in enumerate(cells) if c.isdigit() and len(c) >= 5]
             if not card_indices: continue
-            
+
             old_card = cells[card_indices[0]]
             new_card = cells[card_indices[-1]] if len(card_indices) > 1 else old_card
             selected_card = old_card if card_type == "old" else new_card
@@ -143,9 +163,12 @@ def extract_clean_records(file_obj, card_type="old"):
             if len(digit_cells) >= 3: withheld, eligible, total = digit_cells[0], digit_cells[1], digit_cells[2]
             elif len(digit_cells) == 2: withheld, eligible, total = 0, digit_cells[0], digit_cells[1]
             else: continue
-            records[selected_card] = {"seq": seq, "name": cells[name_idx], "total": total, "eligible": eligible, "withheld": withheld, "alt_card": alt_card}
-            
-    return records
+            if selected_card in records:
+                duplicates.append((selected_card, cells[name_idx]))
+            else:
+                records[selected_card] = {"seq": seq, "name": cells[name_idx], "total": total, "eligible": eligible, "withheld": withheld, "alt_card": alt_card}
+
+    return records, duplicates
 
 # -----------------------------------------------------------------------------
 # 2.5. محرك الاستخراج المخصص للنموذج الرابع المحدث (المستحق فقط)
@@ -179,19 +202,23 @@ def extract_eligible_only_records(file_obj):
                         cells.append(str(cell).strip().replace('\n', ' '))
                 rows_data.append(cells)
 
+    duplicates = []
     for cells in rows_data:
         # التأكد من وجود 6 أعمدة على الأقل حسب الترتيب المطلوب
         if len(cells) >= 6:
             if "اسم" in cells[3] or "المركز" in cells[0]: continue
-            
+
             seq = cells[0]
-            old_card = cells[2]
+            old_card = normalize_digits(cells[2])
             name = cells[3]
             eligible_str = cells[5]
-            
+
             if old_card.isdigit() and len(old_card) >= 4:
                 try:
                     el_val = int(''.join(filter(str.isdigit, eligible_str)))
+                    if old_card in records:
+                        duplicates.append((old_card, name))
+                        continue
                     records[old_card] = {
                         "seq": seq,
                         "name": name,
@@ -201,7 +228,7 @@ def extract_eligible_only_records(file_obj):
                     }
                 except ValueError:
                     continue
-    return records
+    return records, duplicates
 
 # -----------------------------------------------------------------------------
 # 2.6. محرك الاستخراج الذكي بالتعرف التلقائي على العناوين (النموذج الخامس)
@@ -243,7 +270,7 @@ def _smart_detect_header_map(rows_data, max_scan=3):
     return None, -1
 
 def _smart_clean_card(value):
-    v = str(value).strip()
+    v = normalize_digits(str(value).strip())
     if not v.isdigit() or len(v) < 4:
         return ""
     return v
@@ -326,6 +353,7 @@ def preview_columns_for_file(file_obj):
 
 def extract_records_smart(file_obj, card_type="old"):
     records = {}
+    duplicates = []
     tables_rows = _read_tables_rows(file_obj)
 
     last_role_map = None
@@ -374,9 +402,12 @@ def extract_records_smart(file_obj, card_type="old"):
             withheld = _smart_to_int(cells[withheld_idx]) if withheld_idx is not None and withheld_idx <= max_idx else 0
             seq_val = cells[seq_idx].strip() if seq_idx is not None and seq_idx <= max_idx and cells[seq_idx].strip() else "-"
 
-            records[selected_card] = {"seq": seq_val, "name": name, "total": total, "eligible": eligible, "withheld": withheld, "alt_card": alt_card}
+            if selected_card in records:
+                duplicates.append((selected_card, name))
+            else:
+                records[selected_card] = {"seq": seq_val, "name": name, "total": total, "eligible": eligible, "withheld": withheld, "alt_card": alt_card}
 
-    return records
+    return records, duplicates
 
 def merge_records_by_either_card(old_data, new_data):
     """يعتبر عائلتين متطابقتين إذا تطابق رقم البطاقة القديم بينهما أو
@@ -419,14 +450,16 @@ def merge_records_by_either_card(old_data, new_data):
 
 def extract_matched_by_either_card(extract_fn, file_old, file_new):
     """يستخرج الملفين برقم البطاقة القديم كمفتاح أساسي (مع حفظ الحديث
-    كبديل)، ثم يدمجهما بالاعتماد على أي الرقمين ينجح بالمطابقة."""
+    كبديل)، ثم يدمجهما بالاعتماد على أي الرقمين ينجح بالمطابقة. يرجع
+    أيضاً قوائم البطاقات المكررة (لو وجدت) بكل ملف، للتنبيه بدل الإسقاط
+    الصامت لعائلة كاملة."""
     file_old.seek(0); file_new.seek(0)
-    old_data = extract_fn(file_old, card_type="old")
+    old_data, old_duplicates = extract_fn(file_old, card_type="old")
     file_old.seek(0)
-    new_data = extract_fn(file_new, card_type="old")
+    new_data, new_duplicates = extract_fn(file_new, card_type="old")
     file_new.seek(0)
     unified_old, unified_new = merge_records_by_either_card(old_data, new_data)
-    return unified_old, unified_new, "رقم البطاقة"
+    return unified_old, unified_new, "رقم البطاقة", old_duplicates, new_duplicates
 
 # -----------------------------------------------------------------------------
 # 2.7. حارس سلامة البيانات: يرفض الاعتماد على سجلات فاسدة بدل تمريرها
@@ -436,10 +469,14 @@ def extract_matched_by_either_card(extract_fn, file_old, file_new):
 # -----------------------------------------------------------------------------
 MAX_REASONABLE_FAMILY_SIZE = 60  # سخي جداً مقارنة بأكبر عائلة شوهدت فعلياً (~13 فرد) لتفادي رفض حالات نادرة صحيحة
 
-def validate_record(card, rec):
+def validate_record(card, rec, skip_consistency_check=False):
     """يفحص سجل واحد مقابل قيود منطقية معروفة للنطاق، ويرجع نص الخطأ إذا
     فيه مشكلة أو None إذا سليم. لا يرمي استثناء أبداً — أي قيمة غير متوقعة
-    الشكل تُعتبر بحد ذاتها خطأ يوصف ويُرجع، مو تُكسر تنفيذ البرنامج."""
+    الشكل تُعتبر بحد ذاتها خطأ يوصف ويُرجع، مو تُكسر تنفيذ البرنامج.
+    skip_consistency_check=True لنموذج "المستحق فقط" اللي يُصفّر الكلي
+    والمحجوب عمداً (extract_eligible_only_records) — فحص الاتساق بينهم
+    وبين المستحق غير منطقي أصلاً بهذا النموذج ولازم يُستثنى، وإلا أي
+    عائلة بأكثر من مستحقين اثنين ترفض غلط."""
     name = rec.get("name", "؟")
     total = rec.get("total")
     eligible = rec.get("eligible")
@@ -456,7 +493,7 @@ def validate_record(card, rec):
 
     # 3) اتساق حسابي: المستحق + المحجوب ما يتجاوز الكلي (هامش تساهل بسيط
     # لفروقات تقريب/طباعة نادرة بالملفات المصدرية نفسها)
-    if eligible + withheld > total + 2:
+    if not skip_consistency_check and eligible + withheld > total + 2:
         return f"'{name}' (بطاقة {card}): المستحق({eligible}) + المحجوب({withheld}) أكبر من الكلي({total})"
 
     # 4) شكل رقم البطاقة نفسه — أرقام فقط وطول معقول
@@ -465,26 +502,26 @@ def validate_record(card, rec):
 
     return None
 
-def filter_valid_records(records, file_label):
+def filter_valid_records(records, file_label, skip_consistency_check=False):
     """يفصل السجلات السليمة عن الفاسدة سجلاً بسجل — السجلات الفاسدة
     تُستبعد تماماً من أي حساب لاحق (لا تدخل المقارنة ولا التقارير أبداً)
     بدل ما تُترك تلوّث المجاميع، وتُرجع أوصافها لعرضها للمستخدم."""
     clean, errors = {}, []
     for card, rec in records.items():
-        err = validate_record(card, rec)
+        err = validate_record(card, rec, skip_consistency_check=skip_consistency_check)
         if err:
             errors.append(f"[{file_label}] {err}")
         else:
             clean[card] = rec
     return clean, errors
 
-def validate_and_clean_pair(old_data, new_data, old_label, new_label, error_threshold_ratio=0.10, error_threshold_count=3):
+def validate_and_clean_pair(old_data, new_data, old_label, new_label, error_threshold_ratio=0.10, error_threshold_count=3, skip_consistency_check=False):
     """ينظّف الملفين من أي سجل فاسد، ويقرر: نسبة الفساد ضئيلة (يكمل
     بالسجلات النظيفة بعد تحذير) أو عالية (خلل منهجي بقراءة الأعمدة —
     يوقف كاملاً ولا يعتمد حتى على السجلات "السليمة" ظاهرياً، لأن الثقة
     بكل الملف تصير مهزوزة). يرجع (is_safe, clean_old, clean_new, errors)."""
-    clean_old, errors_old = filter_valid_records(old_data, old_label)
-    clean_new, errors_new = filter_valid_records(new_data, new_label)
+    clean_old, errors_old = filter_valid_records(old_data, old_label, skip_consistency_check=skip_consistency_check)
+    clean_new, errors_new = filter_valid_records(new_data, new_label, skip_consistency_check=skip_consistency_check)
     all_errors = errors_old + errors_new
     total_records = len(old_data) + len(new_data)
 
@@ -1133,9 +1170,10 @@ def _colgroup_html_canva(show_referral):
     return _colgroup_html(show_referral)
 
 def _category_section_html_canva(rows, cat, card_col_name, agent_label, with_break=False):
-    title, subtitle = cat["title"], cat["subtitle"].format(agent=agent_label)
+    agent_label = esc(agent_label)
+    title, subtitle = esc(cat["title"]), esc(cat["subtitle"].format(agent=agent_label))
     accent, accent_soft, accent_dark = cat["accent"], cat["accent_soft"], cat["accent_dark"]
-    badge_label, show_referral = cat["badge_label"], cat["show_referral"]
+    badge_label, show_referral = esc(cat["badge_label"]), cat["show_referral"]
 
     style_vars = (
         f"--accent:{accent}; --accent-soft:{accent_soft}; --accent-dark:{accent_dark};"
@@ -1149,15 +1187,15 @@ def _category_section_html_canva(rows, cat, card_col_name, agent_label, with_bre
     referral_th = "<th>الإحالة</th>" if show_referral else ""
     rows_html = ""
     for i, r in enumerate(rows, start=1):
-        referral_td = f"<td class='cv-referral'>{r.get('الإحالة', '')}</td>" if show_referral else ""
+        referral_td = f"<td class='cv-referral'>{esc(r.get('الإحالة', ''))}</td>" if show_referral else ""
         rows_html += f"""
         <tr>
           <td class="cv-idx">{i}</td>
-          <td class="cv-name">{r.get('اسم رب الأسرة', '')}</td>
-          <td class="cv-mono">{r.get(card_col_name, '')}</td>
-          <td class="cv-num">{r.get('الأفراد الكلية', '')}</td>
-          <td class="cv-num cv-eligible">{r.get('الأفراد المستحقة', '')}</td>
-          <td class="cv-num cv-withheld">{r.get('الأفراد المحجوبين', '')}</td>
+          <td class="cv-name">{esc(r.get('اسم رب الأسرة', ''))}</td>
+          <td class="cv-mono">{esc(r.get(card_col_name, ''))}</td>
+          <td class="cv-num">{esc(r.get('الأفراد الكلية', ''))}</td>
+          <td class="cv-num cv-eligible">{esc(r.get('الأفراد المستحقة', ''))}</td>
+          <td class="cv-num cv-withheld">{esc(r.get('الأفراد المحجوبين', ''))}</td>
           {referral_td}
         </tr>"""
 
@@ -1180,7 +1218,7 @@ def _category_section_html_canva(rows, cat, card_col_name, agent_label, with_bre
         <div class="cv-table-wrap">
           <table>
             {_colgroup_html_canva(show_referral)}
-            <thead><tr><th>ت</th><th>اسم رب الأسرة</th><th>{card_col_name}</th><th>الكلية</th><th>المستحقة</th><th>المحجوبين</th>{referral_th}</tr></thead>
+            <thead><tr><th>ت</th><th>اسم رب الأسرة</th><th>{esc(card_col_name)}</th><th>الكلية</th><th>المستحقة</th><th>المحجوبين</th>{referral_th}</tr></thead>
             <tbody>{rows_html}</tbody>
           </table>
         </div>
@@ -1200,9 +1238,10 @@ def _colgroup_html(show_referral):
     return "<colgroup>" + "".join(f'<col style="width:{w}%">' for w in widths) + "</colgroup>"
 
 def _category_section_html(rows, cat, card_col_name, agent_label, with_break=False):
-    title, subtitle = cat["title"], cat["subtitle"].format(agent=agent_label)
+    agent_label = esc(agent_label)
+    title, subtitle = esc(cat["title"]), esc(cat["subtitle"].format(agent=agent_label))
     accent, accent_soft, accent_dark = cat["accent"], cat["accent_soft"], cat["accent_dark"]
-    badge_label, icon, show_referral = cat["badge_label"], cat["icon"], cat["show_referral"]
+    badge_label, icon, show_referral = esc(cat["badge_label"]), cat["icon"], cat["show_referral"]
 
     style_vars = (
         f"--accent:{accent}; --accent-soft:{accent_soft}; --accent-dark:{accent_dark};"
@@ -1217,15 +1256,15 @@ def _category_section_html(rows, cat, card_col_name, agent_label, with_break=Fal
     referral_th = "<th>الإحالة</th>" if show_referral else ""
     rows_html = ""
     for i, r in enumerate(rows, start=1):
-        referral_td = f"<td class='c-referral'>{r.get('الإحالة', '')}</td>" if show_referral else ""
+        referral_td = f"<td class='c-referral'>{esc(r.get('الإحالة', ''))}</td>" if show_referral else ""
         rows_html += f"""
         <tr>
           <td class="c-idx">{i}</td>
-          <td class="c-name">{r.get('اسم رب الأسرة', '')}</td>
-          <td class="c-mono">{r.get(card_col_name, '')}</td>
-          <td class="c-num">{r.get('الأفراد الكلية', '')}</td>
-          <td class="c-num c-eligible">{r.get('الأفراد المستحقة', '')}</td>
-          <td class="c-num c-withheld">{r.get('الأفراد المحجوبين', '')}</td>
+          <td class="c-name">{esc(r.get('اسم رب الأسرة', ''))}</td>
+          <td class="c-mono">{esc(r.get(card_col_name, ''))}</td>
+          <td class="c-num">{esc(r.get('الأفراد الكلية', ''))}</td>
+          <td class="c-num c-eligible">{esc(r.get('الأفراد المستحقة', ''))}</td>
+          <td class="c-num c-withheld">{esc(r.get('الأفراد المحجوبين', ''))}</td>
           {referral_td}
         </tr>"""
 
@@ -1249,7 +1288,7 @@ def _category_section_html(rows, cat, card_col_name, agent_label, with_break=Fal
       <div class="table-wrap">
         <table>
           {_colgroup_html(show_referral)}
-          <thead><tr><th>ت</th><th>اسم رب الأسرة</th><th>{card_col_name}</th><th>الكلية</th><th>المستحقة</th><th>المحجوبين</th>{referral_th}</tr></thead>
+          <thead><tr><th>ت</th><th>اسم رب الأسرة</th><th>{esc(card_col_name)}</th><th>الكلية</th><th>المستحقة</th><th>المحجوبين</th>{referral_th}</tr></thead>
           <tbody>{rows_html}</tbody>
         </table>
       </div>
@@ -1307,6 +1346,7 @@ def create_combined_pdf_report(df_results_full, card_col_name, new_file_name, te
     if not matched:
         return None, agent_label
 
+    cover_agent_label = esc(agent_label)
     cover_accent, cover_soft, cover_dark = "#154360", "#EBF5FB", "#0B2E4F"
 
     if template == "canva":
@@ -1322,7 +1362,7 @@ def create_combined_pdf_report(df_results_full, card_col_name, new_file_name, te
         <section class="cv-section" style="{cover_style}">
           <div class="cv-cover">
             <h1>التقرير الشامل لكل حالات المتغيرات</h1>
-            <div class="cv-agent" style="position:static;">الوكيل: {agent_label}</div>
+            <div class="cv-agent" style="position:static;">الوكيل: {cover_agent_label}</div>
             <div class="cv-summary-grid">{summary_cards}</div>
           </div>
         </section>"""
@@ -1346,7 +1386,7 @@ def create_combined_pdf_report(df_results_full, card_col_name, new_file_name, te
           <div class="cover">
             <div class="icon-badge" style="margin-bottom:16px;">★</div>
             <h1>التقرير الشامل لكل حالات المتغيرات</h1>
-            <div class="pills"><div class="agent-pill">الوكيل: {agent_label}</div></div>
+            <div class="pills"><div class="agent-pill">الوكيل: {cover_agent_label}</div></div>
             <div class="summary-grid">{summary_cards}</div>
           </div>
         </section>"""
@@ -1450,12 +1490,16 @@ def main():
                     file_old, file_new = file2, file1
                     old_name, new_name = file2.name, file1.name
 
-                st.markdown(f"<div class='date-badge'>الملف المعتمد كـ <span class='old'>السابق: ({old_name})</span> | الملف المعتمد كـ <span class='new'>الحديث: ({new_name})</span></div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='date-badge'>الملف المعتمد كـ <span class='old'>السابق: ({esc(old_name)})</span> | الملف المعتمد كـ <span class='new'>الحديث: ({esc(new_name)})</span></div>", unsafe_allow_html=True)
+
+                old_duplicates, new_duplicates = [], []
+                is_eligible_only_mode = (comparison_mode == "النموذج الرابع (المستحق فقط)")
 
                 # توجيه النظام حسب نوع النموذج
-                if comparison_mode == "النموذج الرابع (المستحق فقط)":
-                    old_data = extract_eligible_only_records(file_old)
-                    new_data = extract_eligible_only_records(file_new)
+                if is_eligible_only_mode:
+                    st.caption("ℹ️ نموذج \"المستحق فقط\" يقرأ ترتيب أعمدة ثابت مسبقاً (مو حسب العناوين المكتشفة بالمعاينة أعلاه) — تأكد إن ترتيب أعمدة ملفيك يطابق: تسلسل، (عمود)، بطاقة، اسم، (عمود)، مستحق.")
+                    old_data, old_duplicates = extract_eligible_only_records(file_old)
+                    new_data, new_duplicates = extract_eligible_only_records(file_new)
                     card_col_name = "رقم البطاقة القديم"
                 else:
                     # المحرك الذكي بالتعرف على العناوين هو الأدق (يقرأ عناوين
@@ -1465,42 +1509,55 @@ def main():
                     # هذا يمنع تسرب أرقام بطاقات لأعمدة الأعداد (خلل شوهد فعلياً
                     # مع المحرك القديم على بعض تنسيقات الجداول).
                     if card_type_auto:
-                        old_data, new_data, card_col_name = extract_matched_by_either_card(extract_records_smart, file_old, file_new)
+                        old_data, new_data, card_col_name, old_duplicates, new_duplicates = extract_matched_by_either_card(extract_records_smart, file_old, file_new)
                     else:
-                        old_data = extract_records_smart(file_old, card_type=card_type_param)
-                        new_data = extract_records_smart(file_new, card_type=card_type_param)
+                        old_data, old_duplicates = extract_records_smart(file_old, card_type=card_type_param)
+                        new_data, new_duplicates = extract_records_smart(file_new, card_type=card_type_param)
 
                     if not old_data or not new_data:
                         st.caption("⚠️ المحرك الذكي ما لقى جدول بعناوين واضحة بأحد الملفين، تم الرجوع للمحرك القديم.")
                         if card_type_auto:
-                            old_data, new_data, card_col_name = extract_matched_by_either_card(extract_clean_records, file_old, file_new)
+                            old_data, new_data, card_col_name, old_duplicates, new_duplicates = extract_matched_by_either_card(extract_clean_records, file_old, file_new)
                         else:
-                            old_data = extract_clean_records(file_old, card_type=card_type_param)
-                            new_data = extract_clean_records(file_new, card_type=card_type_param)
+                            old_data, old_duplicates = extract_clean_records(file_old, card_type=card_type_param)
+                            new_data, new_duplicates = extract_clean_records(file_new, card_type=card_type_param)
                         used_fallback_engine = True
                     else:
                         used_fallback_engine = False
 
-                if card_type_auto and comparison_mode not in ("النموذج الرابع (المستحق فقط)",):
+                    if not old_data or not new_data:
+                        st.error("❌ ما قدرنا نستخرج أي سجل من ملف واحد أو أكثر (حتى بالمحرك الاحتياطي). تأكد إن الملفات تحتوي فعلاً جدول بيانات، مو ملف فارغ أو بصيغة غير مدعومة.")
+                        st.stop()
+
+                if old_duplicates or new_duplicates:
+                    with st.expander(f"⚠️ {len(old_duplicates) + len(new_duplicates)} رقم بطاقة مكرر داخل نفس الملف (اعتُمد أول ظهور فقط، تجاهلنا الباقي)"):
+                        for card, name in old_duplicates:
+                            st.markdown(f"- [{esc(old_name)}] بطاقة {esc(card)} مكررة — '{esc(name)}'")
+                        for card, name in new_duplicates:
+                            st.markdown(f"- [{esc(new_name)}] بطاقة {esc(card)} مكررة — '{esc(name)}'")
+
+                if card_type_auto and not is_eligible_only_mode:
                     st.caption("🔎 تم استخدام رقم البطاقة القديم والحديث معاً تلقائياً لتقوية المطابقة بين الملفين.")
 
                 # حارس سلامة البيانات: نفحص وننظّف قبل لا نكمل، مو بعد ما تطلع
                 # أرقام غلط بالتقارير. أي سجل فاسد يُستبعد نهائياً من الحساب.
                 # لو أول محاولة فيها خلل خطير (فساد منهجي، مو سجل معزول) وما
                 # جربنا المحرك القديم بعد، نجربه كفرصة أخيرة قبل ما نوقف نهائياً.
-                is_safe, clean_old, clean_new, validation_errors = validate_and_clean_pair(old_data, new_data, old_name, new_name)
-                if not is_safe and comparison_mode != "النموذج الرابع (المستحق فقط)" and not used_fallback_engine:
+                # نموذج "المستحق فقط" يُصفّر الكلي/المحجوب عمداً فنتجاوز فحص
+                # الاتساق الحسابي بينهم (skip_consistency_check).
+                is_safe, clean_old, clean_new, validation_errors = validate_and_clean_pair(old_data, new_data, old_name, new_name, skip_consistency_check=is_eligible_only_mode)
+                if not is_safe and not is_eligible_only_mode and not used_fallback_engine:
                     if card_type_auto:
-                        old_data, new_data, card_col_name = extract_matched_by_either_card(extract_clean_records, file_old, file_new)
+                        old_data, new_data, card_col_name, _, _ = extract_matched_by_either_card(extract_clean_records, file_old, file_new)
                     else:
-                        old_data = extract_clean_records(file_old, card_type=card_type_param)
-                        new_data = extract_clean_records(file_new, card_type=card_type_param)
-                    is_safe, clean_old, clean_new, validation_errors = validate_and_clean_pair(old_data, new_data, old_name, new_name)
+                        old_data, _ = extract_clean_records(file_old, card_type=card_type_param)
+                        new_data, _ = extract_clean_records(file_new, card_type=card_type_param)
+                    is_safe, clean_old, clean_new, validation_errors = validate_and_clean_pair(old_data, new_data, old_name, new_name, skip_consistency_check=is_eligible_only_mode)
 
                 if not is_safe:
                     st.error("❌ توقفت المقارنة: القيم المستخرجة من الملفات غير منطقية (على الأغلب خلل بقراءة الأعمدة)، ولن أكمل الحساب عليها. تفاصيل أول 10 أخطاء:")
                     for err in validation_errors[:10]:
-                        st.markdown(f"- {err}")
+                        st.markdown(f"- {esc(err)}")
                     st.info("راجع ترتيب/عناوين أعمدة الملفين، أو جرب النموذج الخامس (كشف تلقائي بالعناوين) يدوياً.")
                     st.stop()
 
@@ -1508,7 +1565,7 @@ def main():
                 if validation_errors:
                     with st.expander(f"⚠️ {len(validation_errors)} سجل مستبعد لعدم منطقية قيمه (لن يدخل أي حساب أو تقرير)"):
                         for err in validation_errors[:20]:
-                            st.markdown(f"- {err}")
+                            st.markdown(f"- {esc(err)}")
 
                 results, results_ref, counters = process_comparison(old_data, new_data, comparison_mode, card_col_name, matching_engine)
 

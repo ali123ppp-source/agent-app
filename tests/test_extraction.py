@@ -3,16 +3,18 @@ import app
 
 def test_extract_records_smart_954_counts(agent954_files):
     old_file, new_file = agent954_files
-    old_data = app.extract_records_smart(old_file, card_type="new")
-    new_data = app.extract_records_smart(new_file, card_type="new")
+    old_data, old_dupes = app.extract_records_smart(old_file, card_type="new")
+    new_data, new_dupes = app.extract_records_smart(new_file, card_type="new")
     assert len(old_data) == 254
     assert len(new_data) == 402
+    assert old_dupes == []
+    assert new_dupes == []
 
 
 def test_extract_records_smart_921_counts(agent921_files):
     old_file, new_file = agent921_files
-    old_data = app.extract_records_smart(old_file, card_type="new")
-    new_data = app.extract_records_smart(new_file, card_type="new")
+    old_data, _ = app.extract_records_smart(old_file, card_type="new")
+    new_data, _ = app.extract_records_smart(new_file, card_type="new")
     assert len(old_data) == 406
     assert len(new_data) == 422
 
@@ -22,7 +24,7 @@ def test_extract_records_smart_handles_multi_sheet_without_repeated_header(agent
     بيانات فقط بدون تكرار العناوين) — هذا بالضبط ما يثبت إن last_role_map
     يشتغل صح عبر أوراق متعددة."""
     old_file, _ = agent954_files
-    old_data = app.extract_records_smart(old_file, card_type="new")
+    old_data, _ = app.extract_records_smart(old_file, card_type="new")
     assert len(old_data) > 200  # لو فشل بالورقة الثانية كان العدد يطلع أقل بكثير
 
 
