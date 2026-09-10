@@ -341,6 +341,28 @@ def extract_records_smart(file_obj, card_type="old"):
 
     return records
 
+def pick_best_card_type(extract_fn, file_old, file_new):
+    """يجرب استخراج السجلات بكل من رقم البطاقة القديم والحديث كمفتاح مطابقة،
+    ويختار تلقائياً أياً منهما يعطي أكبر عدد تطابقات فعلية بين الملفين
+    (بدل الاعتماد على اختيار المستخدم اليدوي، اللي إذا غلط يطلع كل شيء
+    "مضاف/محذوف" بدون أي تطابق)."""
+    file_old.seek(0); file_new.seek(0)
+    old_v_old = extract_fn(file_old, card_type="old")
+    file_old.seek(0)
+    new_v_old = extract_fn(file_new, card_type="old")
+    file_new.seek(0)
+    old_v_new = extract_fn(file_old, card_type="new")
+    file_old.seek(0)
+    new_v_new = extract_fn(file_new, card_type="new")
+    file_new.seek(0)
+
+    common_old = len(set(old_v_old.keys()) & set(new_v_old.keys()))
+    common_new = len(set(old_v_new.keys()) & set(new_v_new.keys()))
+
+    if common_new >= common_old:
+        return old_v_new, new_v_new, "رقم البطاقة الحديث"
+    return old_v_old, new_v_old, "رقم البطاقة القديم"
+
 # -----------------------------------------------------------------------------
 # 3. محرك المقارنة الذكي الثابت (محدث لدعم النموذج الرابع)
 # -----------------------------------------------------------------------------
@@ -1214,11 +1236,12 @@ uploaded_files = st.file_uploader("ارفع ملفي الشهر السابق و�
 
 col_opts1, col_opts2, col_opts3 = st.columns(3)
 with col_opts1: comparison_mode = st.radio("🎯 نوع المقارنة:", ["النوع الأول", "النوع الثاني", "النوع الثالث", "النموذج الرابع (المستحق فقط)", "النموذج الخامس (كشف تلقائي بالعناوين)"], horizontal=True)
-with col_opts2: card_choice_ui = st.radio("💳 البطاقة المعتمدة:", ["رقم البطاقة القديم", "رقم البطاقة الحديث"], horizontal=True)
+with col_opts2: card_choice_ui = st.radio("💳 البطاقة المعتمدة:", ["تلقائي (الأنسب للمطابقة)", "رقم البطاقة القديم", "رقم البطاقة الحديث"], horizontal=True)
 with col_opts3: matching_engine = st.radio("⚙️ محرك المطابقة المستهدف:", ["المحرك القياسي", "محرك تخطي التسلسل (بطاقة فقط)"], horizontal=True)
 
+card_type_auto = (card_choice_ui == "تلقائي (الأنسب للمطابقة)")
 card_type_param = "old" if card_choice_ui == "رقم البطاقة القديم" else "new"
-card_col_name = card_choice_ui
+card_col_name = card_choice_ui if not card_type_auto else "رقم البطاقة القديم"
 swap_files = st.checkbox("🔄 **عكس الملفين يدوياً (القديم يصبح حديثاً والحديث قديماً)**")
 pdf_template_ui = st.radio("🎨 نمط تصميم تقارير PDF:", ["الافتراضي (زجاجي)", "كانفا"], horizontal=True)
 pdf_template = "canva" if pdf_template_ui == "كانفا" else "glass"
@@ -1255,11 +1278,20 @@ if st.button("بدء المقارنة الذكية واستخراج المتغي
                 new_data = extract_eligible_only_records(file_new)
                 card_col_name = "رقم البطاقة القديم"
             elif comparison_mode == "النموذج الخامس (كشف تلقائي بالعناوين)":
-                old_data = extract_records_smart(file_old, card_type=card_type_param)
-                new_data = extract_records_smart(file_new, card_type=card_type_param)
+                if card_type_auto:
+                    old_data, new_data, card_col_name = pick_best_card_type(extract_records_smart, file_old, file_new)
+                else:
+                    old_data = extract_records_smart(file_old, card_type=card_type_param)
+                    new_data = extract_records_smart(file_new, card_type=card_type_param)
             else:
-                old_data = extract_clean_records(file_old, card_type=card_type_param)
-                new_data = extract_clean_records(file_new, card_type=card_type_param)
+                if card_type_auto:
+                    old_data, new_data, card_col_name = pick_best_card_type(extract_clean_records, file_old, file_new)
+                else:
+                    old_data = extract_clean_records(file_old, card_type=card_type_param)
+                    new_data = extract_clean_records(file_new, card_type=card_type_param)
+
+            if card_type_auto and comparison_mode not in ("النموذج الرابع (المستحق فقط)",):
+                st.caption(f"🔎 تم اختيار **{card_col_name}** تلقائياً كمفتاح مطابقة (أعلى نسبة تطابق بين الملفين).")
             
             results, results_ref, counters = process_comparison(old_data, new_data, comparison_mode, card_col_name, matching_engine)
             
