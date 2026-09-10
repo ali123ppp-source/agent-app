@@ -270,8 +270,10 @@ def _smart_to_int(value):
     digits = "".join(filter(str.isdigit, str(value)))
     return int(digits) if digits else 0
 
-def extract_records_smart(file_obj, card_type="old"):
-    records = {}
+def _read_tables_rows(file_obj):
+    """يقرأ كل الجداول/الأوراق بملف (docx أو xlsx) كقوائم صفوف نصية خام،
+    بدون أي تفسير لمعنى الأعمدة — الأساس المشترك بين الاستخراج الفعلي
+    ومعاينة الأعمدة قبل المقارنة."""
     file_ext = file_obj.name.split('.')[-1].lower()
     tables_rows = []
 
@@ -299,6 +301,50 @@ def extract_records_smart(file_obj, card_type="old"):
                         cells.append(str(cell).strip().replace('\n', ' '))
                 rows.append(cells)
             tables_rows.append(rows)
+
+    return tables_rows
+
+_ROLE_LABELS_AR = {
+    "seq": "التسلسل", "old_card": "البطاقة القديمة", "new_card": "البطاقة الجديدة",
+    "card_generic": "رقم بطاقة", "name": "اسم رب الأسرة", "total": "الأفراد الكلية",
+    "eligible": "الأفراد المستحقة", "withheld": "الأفراد المحجوبين",
+}
+
+def preview_columns_for_file(file_obj):
+    """يكتشف تخطيط أعمدة الملف (نفس منطق النموذج الخامس) بدون استخراج
+    كامل السجلات، ويرجع قاموس {دور: نص العنوان المكتشف} + أول صفين بيانات
+    مقروءة حسب الدور (مو أعمدة خام) كعيّنة، لعرضها على المستخدم قبل ما
+    يبدأ المقارنة فعلياً. يرجع None لو ما لقى جدول بعناوين واضحة."""
+    tables_rows = _read_tables_rows(file_obj)
+    for rows in tables_rows:
+        role_map, header_row_idx = _smart_detect_header_map(rows)
+        if role_map is None:
+            continue
+        header_row = rows[header_row_idx]
+        detected = {}
+        for role, col_idx in role_map.items():
+            if role == "card_generic" and ("old_card" in role_map or "new_card" in role_map):
+                continue  # ما نعرضه لو عندنا دور أدق (قديم/جديد) لنفس أو عمود مختلف
+            label = _ROLE_LABELS_AR.get(role, role)
+            header_text = header_row[col_idx] if col_idx < len(header_row) else ""
+            detected[label] = header_text
+
+        sample_records = []
+        for row in rows[header_row_idx + 1: header_row_idx + 3]:
+            sample = {}
+            for role, col_idx in role_map.items():
+                if role == "card_generic" and ("old_card" in role_map or "new_card" in role_map):
+                    continue
+                label = _ROLE_LABELS_AR.get(role, role)
+                sample[label] = row[col_idx] if col_idx < len(row) else ""
+            sample_records.append(sample)
+
+        return {"detected": detected, "sample_records": sample_records}
+    return None
+
+def extract_records_smart(file_obj, card_type="old"):
+    records = {}
+    tables_rows = _read_tables_rows(file_obj)
 
     last_role_map = None
     for rows in tables_rows:
@@ -1338,6 +1384,34 @@ def create_combined_pdf_report(df_results_full, card_col_name, new_file_name, te
 st.markdown("<h3 style='text-align: right;'>📂 منطقة الرفع والمطابقة</h3>", unsafe_allow_html=True)
 uploaded_files = st.file_uploader("ارفع ملفي الشهر السابق والحالي معاً", type=['docx', 'xlsx'], accept_multiple_files=True)
 
+columns_confirmed = True  # لا يوجد جدول للتأكد منه إلا بعد رفع ملفين اثنين
+if uploaded_files and len(uploaded_files) == 2:
+    st.markdown("<h4 style='text-align: right;'>👁️ معاينة الأعمدة المكتشفة (تأكد قبل المتابعة)</h4>", unsafe_allow_html=True)
+    preview_cols = st.columns(2)
+    previews_ok = []
+    for pf, pcol in zip(uploaded_files, preview_cols):
+        with pcol:
+            st.markdown(f"**{pf.name}**")
+            preview = preview_columns_for_file(pf)
+            pf.seek(0)
+            if preview is None:
+                st.warning("ما قدرنا نكتشف جدول بعناوين واضحة بهذا الملف — راح يعتمد على محرك احتياطي أقدم عند المقارنة.")
+                previews_ok.append(False)
+            else:
+                st.caption("الأعمدة المكتشفة ← نص العنوان بالملف:")
+                st.dataframe(pd.DataFrame(list(preview["detected"].items()), columns=["الدور", "العنوان بالملف"]), hide_index=True, use_container_width=True)
+                if preview["sample_records"]:
+                    st.caption("عيّنة (أول سجلين):")
+                    st.dataframe(pd.DataFrame(preview["sample_records"]), hide_index=True, use_container_width=True)
+                previews_ok.append(True)
+
+    if all(previews_ok):
+        columns_confirmed = st.checkbox("✅ أؤكد إن الأعمدة أعلاه مكتشفة صحيح، وأريد أكمل المقارنة")
+        if not columns_confirmed:
+            st.info("علّم المربع أعلاه بعد التأكد من الأعمدة عشان يفعّل زر بدء المقارنة.")
+    else:
+        st.caption("⚠️ ملف واحد أو أكثر ما ظهرت له معاينة — تقدر تكمل عادي وسيتم التحقق من سلامة الأرقام تلقائياً بعد الاستخراج.")
+
 col_opts1, col_opts2, col_opts3 = st.columns(3)
 with col_opts1: comparison_mode = st.radio("🎯 نوع المقارنة:", ["النوع الأول", "النوع الثاني", "النوع الثالث", "النموذج الرابع (المستحق فقط)", "النموذج الخامس (كشف تلقائي بالعناوين)"], horizontal=True)
 with col_opts2: card_choice_ui = st.radio("💳 البطاقة المعتمدة:", ["تلقائي (الأنسب للمطابقة)", "رقم البطاقة القديم", "رقم البطاقة الحديث"], horizontal=True)
@@ -1350,7 +1424,7 @@ swap_files = st.checkbox("🔄 **عكس الملفين يدوياً (القدي�
 pdf_template_ui = st.radio("🎨 نمط تصميم تقارير PDF:", ["الافتراضي (زجاجي)", "كانفا"], horizontal=True)
 pdf_template = "canva" if pdf_template_ui == "كانفا" else "glass"
 
-if st.button("بدء المقارنة الذكية واستخراج المتغيرات والأوراق"):
+if st.button("بدء المقارنة الذكية واستخراج المتغيرات والأوراق", disabled=not columns_confirmed):
     if len(uploaded_files) == 2:
         with st.spinner('جاري التحليل وعزل الحالات تلقائياً...'):
             file1, file2 = uploaded_files[0], uploaded_files[1]
