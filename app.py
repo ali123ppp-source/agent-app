@@ -401,6 +401,73 @@ def extract_matched_by_either_card(extract_fn, file_old, file_new):
     return unified_old, unified_new, "رقم البطاقة"
 
 # -----------------------------------------------------------------------------
+# 2.7. حارس سلامة البيانات: يرفض الاعتماد على سجلات فاسدة بدل تمريرها
+# بصمت للمقارنة والتقارير (هذا بالضبط ما كان غايباً وسبب ظهور أرقام
+# مستحيلة مثل ملايين "الأفراد المستحقين" لعشرات العوائل فقط، نتيجة تسرّب
+# رقم بطاقة لعمود عدد).
+# -----------------------------------------------------------------------------
+MAX_REASONABLE_FAMILY_SIZE = 60  # سخي جداً مقارنة بأكبر عائلة شوهدت فعلياً (~13 فرد) لتفادي رفض حالات نادرة صحيحة
+
+def validate_record(card, rec):
+    """يفحص سجل واحد مقابل قيود منطقية معروفة للنطاق، ويرجع نص الخطأ إذا
+    فيه مشكلة أو None إذا سليم. لا يرمي استثناء أبداً — أي قيمة غير متوقعة
+    الشكل تُعتبر بحد ذاتها خطأ يوصف ويُرجع، مو تُكسر تنفيذ البرنامج."""
+    name = rec.get("name", "؟")
+    total = rec.get("total")
+    eligible = rec.get("eligible")
+    withheld = rec.get("withheld")
+
+    # 1) القيم لازم تكون أعداد صحيحة غير سالبة (مو نص أو None متسرب)
+    if not all(isinstance(v, int) and not isinstance(v, bool) and v >= 0 for v in (total, eligible, withheld)):
+        return f"'{name}' (بطاقة {card}): قيم أعداد غير صالحة (كلي={total!r}, مستحق={eligible!r}, محجوب={withheld!r})"
+
+    # 2) حد أقصى منطقي لحجم العائلة — أي تجاوز يعني شبه مؤكد تسرّب رقم
+    # بطاقة أو رقم تسلسل لعمود عدد، مو عائلة فعلية بهذا الحجم
+    if total > MAX_REASONABLE_FAMILY_SIZE or eligible > MAX_REASONABLE_FAMILY_SIZE or withheld > MAX_REASONABLE_FAMILY_SIZE:
+        return f"'{name}' (بطاقة {card}): عدد غير منطقي — كلي={total}, مستحق={eligible}, محجوب={withheld}"
+
+    # 3) اتساق حسابي: المستحق + المحجوب ما يتجاوز الكلي (هامش تساهل بسيط
+    # لفروقات تقريب/طباعة نادرة بالملفات المصدرية نفسها)
+    if eligible + withheld > total + 2:
+        return f"'{name}' (بطاقة {card}): المستحق({eligible}) + المحجوب({withheld}) أكبر من الكلي({total})"
+
+    # 4) شكل رقم البطاقة نفسه — أرقام فقط وطول معقول
+    if not (str(card).isdigit() and 3 <= len(str(card)) <= 10):
+        return f"'{name}': رقم بطاقة مشبوه الشكل '{card}'"
+
+    return None
+
+def filter_valid_records(records, file_label):
+    """يفصل السجلات السليمة عن الفاسدة سجلاً بسجل — السجلات الفاسدة
+    تُستبعد تماماً من أي حساب لاحق (لا تدخل المقارنة ولا التقارير أبداً)
+    بدل ما تُترك تلوّث المجاميع، وتُرجع أوصافها لعرضها للمستخدم."""
+    clean, errors = {}, []
+    for card, rec in records.items():
+        err = validate_record(card, rec)
+        if err:
+            errors.append(f"[{file_label}] {err}")
+        else:
+            clean[card] = rec
+    return clean, errors
+
+def validate_and_clean_pair(old_data, new_data, old_label, new_label, error_threshold_ratio=0.10, error_threshold_count=3):
+    """ينظّف الملفين من أي سجل فاسد، ويقرر: نسبة الفساد ضئيلة (يكمل
+    بالسجلات النظيفة بعد تحذير) أو عالية (خلل منهجي بقراءة الأعمدة —
+    يوقف كاملاً ولا يعتمد حتى على السجلات "السليمة" ظاهرياً، لأن الثقة
+    بكل الملف تصير مهزوزة). يرجع (is_safe, clean_old, clean_new, errors)."""
+    clean_old, errors_old = filter_valid_records(old_data, old_label)
+    clean_new, errors_new = filter_valid_records(new_data, new_label)
+    all_errors = errors_old + errors_new
+    total_records = len(old_data) + len(new_data)
+
+    if not all_errors:
+        return True, clean_old, clean_new, []
+
+    error_ratio = len(all_errors) / total_records if total_records else 1.0
+    is_critical = len(all_errors) >= error_threshold_count and error_ratio >= error_threshold_ratio
+    return (not is_critical), clean_old, clean_new, all_errors
+
+# -----------------------------------------------------------------------------
 # 3. محرك المقارنة الذكي الثابت (محدث لدعم النموذج الرابع)
 # -----------------------------------------------------------------------------
 def process_comparison(old_data, new_data, mode, card_col_name, matching_engine):
@@ -1334,10 +1401,39 @@ if st.button("بدء المقارنة الذكية واستخراج المتغي
                     else:
                         old_data = extract_clean_records(file_old, card_type=card_type_param)
                         new_data = extract_clean_records(file_new, card_type=card_type_param)
+                    used_fallback_engine = True
+                else:
+                    used_fallback_engine = False
 
             if card_type_auto and comparison_mode not in ("النموذج الرابع (المستحق فقط)",):
                 st.caption("🔎 تم استخدام رقم البطاقة القديم والحديث معاً تلقائياً لتقوية المطابقة بين الملفين.")
-            
+
+            # حارس سلامة البيانات: نفحص وننظّف قبل لا نكمل، مو بعد ما تطلع
+            # أرقام غلط بالتقارير. أي سجل فاسد يُستبعد نهائياً من الحساب.
+            # لو أول محاولة فيها خلل خطير (فساد منهجي، مو سجل معزول) وما
+            # جربنا المحرك القديم بعد، نجربه كفرصة أخيرة قبل ما نوقف نهائياً.
+            is_safe, clean_old, clean_new, validation_errors = validate_and_clean_pair(old_data, new_data, old_name, new_name)
+            if not is_safe and comparison_mode != "النموذج الرابع (المستحق فقط)" and not used_fallback_engine:
+                if card_type_auto:
+                    old_data, new_data, card_col_name = extract_matched_by_either_card(extract_clean_records, file_old, file_new)
+                else:
+                    old_data = extract_clean_records(file_old, card_type=card_type_param)
+                    new_data = extract_clean_records(file_new, card_type=card_type_param)
+                is_safe, clean_old, clean_new, validation_errors = validate_and_clean_pair(old_data, new_data, old_name, new_name)
+
+            if not is_safe:
+                st.error("❌ توقفت المقارنة: القيم المستخرجة من الملفات غير منطقية (على الأغلب خلل بقراءة الأعمدة)، ولن أكمل الحساب عليها. تفاصيل أول 10 أخطاء:")
+                for err in validation_errors[:10]:
+                    st.markdown(f"- {err}")
+                st.info("راجع ترتيب/عناوين أعمدة الملفين، أو جرب النموذج الخامس (كشف تلقائي بالعناوين) يدوياً.")
+                st.stop()
+
+            old_data, new_data = clean_old, clean_new
+            if validation_errors:
+                with st.expander(f"⚠️ {len(validation_errors)} سجل مستبعد لعدم منطقية قيمه (لن يدخل أي حساب أو تقرير)"):
+                    for err in validation_errors[:20]:
+                        st.markdown(f"- {err}")
+
             results, results_ref, counters = process_comparison(old_data, new_data, comparison_mode, card_col_name, matching_engine)
             
             if results:
