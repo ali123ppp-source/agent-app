@@ -819,9 +819,17 @@ if st.button("بدء المقارنة الذكية واستخراج المتغي
     if len(uploaded_files) == 2:
         with st.spinner('جاري التحليل وعزل الحالات تلقائياً...'):
             file1, file2 = uploaded_files[0], uploaded_files[1]
-            date1, date2 = extract_document_date(file1), extract_document_date(file2)
-            
-            file_a_is_older = (date1 < date2) if (date1 and date2) else True
+            ext1 = file1.name.split('.')[-1].lower()
+            ext2 = file2.name.split('.')[-1].lower()
+
+            if {ext1, ext2} == {"xlsx", "docx"}:
+                # قاعدة ثابتة: عند رفع ملف إكسل وملف وورد معاً، يُعتمد الإكسل دائماً كالملف
+                # السابق (القديم) والوورد دائماً كالملف الحديث، بغض النظر عن التاريخ المستشعر
+                file_a_is_older = (ext1 == "xlsx")
+            else:
+                date1, date2 = extract_document_date(file1), extract_document_date(file2)
+                file_a_is_older = (date1 < date2) if (date1 and date2) else True
+
             if swap_files: file_a_is_older = not file_a_is_older
                 
             if file_a_is_older:
