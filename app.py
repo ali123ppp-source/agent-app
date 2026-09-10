@@ -10,6 +10,7 @@ from docx.oxml.ns import nsdecls, qn
 from docx.shared import RGBColor, Pt, Inches
 import re
 from datetime import datetime
+from weasyprint import HTML as WeasyHTML
 
 # =============================================================================
 # إعدادات واجهة المستخدم وتنسيقات الـ CSS للويب
@@ -801,6 +802,269 @@ def create_word_stats_report(counters, filename_base):
     return buffer
 
 # -----------------------------------------------------------------------------
+# 5.5. تقارير PDF أنيقة منفصلة لكل حالة من حالات المتغيرات (تصميم A4 قابل للطباعة)
+# -----------------------------------------------------------------------------
+# كل عنصر: مفتاح الحالة، عنوان التقرير، وصف فرعي، كلمة الشارة، الأيقونة، ألوان
+# التمييز، وهل يُعرض عمود "الإحالة" (سبب التغيير) بالجدول، ودالة تحدد هل الصف
+# ينتمي لهذه الحالة (صف واحد قد ينتمي لأكثر من حالة، مثل زيادة أفراد + حجب معاً)
+CATEGORY_DEFS = [
+    {"key": "added", "title": "تقرير العوائل المضافة",
+     "subtitle": "العوائل الجديدة التي ظهرت في كشف الوكيل {agent} الحالي",
+     "badge_label": "مضافة", "icon": "+", "accent": "#1E8449", "accent_soft": "#EAFAF1", "accent_dark": "#145A32",
+     "show_referral": False, "match": lambda r: r.get("meta_status") == "added"},
+    {"key": "deleted", "title": "تقرير العوائل المحذوفة",
+     "subtitle": "العوائل الموجودة سابقاً والمفقودة من كشف الوكيل {agent} الحالي",
+     "badge_label": "محذوفة", "icon": "-", "accent": "#C0392B", "accent_soft": "#FDEDEC", "accent_dark": "#922B21",
+     "show_referral": False, "match": lambda r: r.get("meta_status") == "deleted"},
+    {"key": "full_block", "title": "تقرير الحجب الكلي",
+     "subtitle": "عوائل تم حجب كامل أفرادها في كشف الوكيل {agent} الحالي",
+     "badge_label": "حجب كلي", "icon": "⛔", "accent": "#7B241C", "accent_soft": "#FDEDEC", "accent_dark": "#5B1A12",
+     "show_referral": True, "match": lambda r: "حجب كلي" in str(r.get("الإحالة") or "")},
+    {"key": "block_up", "title": "تقرير زيادة الحجب",
+     "subtitle": "عوائل ارتفع فيها عدد الأفراد المحجوبين في كشف الوكيل {agent} الحالي",
+     "badge_label": "زيادة حجب", "icon": "🔒", "accent": "#B9770E", "accent_soft": "#FEF9E7", "accent_dark": "#7D6608",
+     "show_referral": True, "match": lambda r: "تم حجب" in str(r.get("الإحالة") or "") and "حجب كلي" not in str(r.get("الإحالة") or "")},
+    {"key": "block_down", "title": "تقرير رفع الحجب",
+     "subtitle": "عوائل رُفع عنها الحجب جزئياً أو كلياً في كشف الوكيل {agent} الحالي",
+     "badge_label": "رفع حجب", "icon": "🔓", "accent": "#117864", "accent_soft": "#E8F8F5", "accent_dark": "#0B5345",
+     "show_referral": True, "match": lambda r: "رفع الحجب" in str(r.get("الإحالة") or "")},
+    {"key": "members_up", "title": "تقرير زيادة عدد الأفراد",
+     "subtitle": "عوائل زاد فيها عدد الأفراد الكلي (إضافة مولود) في كشف الوكيل {agent} الحالي",
+     "badge_label": "زيادة أفراد", "icon": "👶", "accent": "#1F618D", "accent_soft": "#EBF5FB", "accent_dark": "#154360",
+     "show_referral": True, "match": lambda r: "إضافة طفل" in str(r.get("الإحالة") or "")},
+    {"key": "members_down", "title": "تقرير نقصان عدد الأفراد",
+     "subtitle": "عوائل نقص فيها عدد الأفراد الكلي في كشف الوكيل {agent} الحالي",
+     "badge_label": "نقصان أفراد", "icon": "📉", "accent": "#A04000", "accent_soft": "#FDF2E9", "accent_dark": "#6E2C00",
+     "show_referral": True, "match": lambda r: bool(re.search(r'نقصان\s+\d+\s+نفر', str(r.get("الإحالة") or "")))},
+    {"key": "eligible_up", "title": "تقرير زيادة المستحقين",
+     "subtitle": "عوائل زاد فيها عدد الأفراد المستحقين في كشف الوكيل {agent} الحالي",
+     "badge_label": "زيادة مستحق", "icon": "📈", "accent": "#1F618D", "accent_soft": "#EBF5FB", "accent_dark": "#154360",
+     "show_referral": True, "match": lambda r: "زيادة مستحق" in str(r.get("الإحالة") or "")},
+    {"key": "eligible_down", "title": "تقرير نقصان المستحقين",
+     "subtitle": "عوائل نقص فيها عدد الأفراد المستحقين في كشف الوكيل {agent} الحالي",
+     "badge_label": "نقصان مستحق", "icon": "📉", "accent": "#B9770E", "accent_soft": "#FEF9E7", "accent_dark": "#7D6608",
+     "show_referral": True, "match": lambda r: "نقصان مستحق" in str(r.get("الإحالة") or "")},
+    {"key": "name_change", "title": "تقرير تغيير الأسماء",
+     "subtitle": "عوائل تغيّر اسم رب الأسرة فيها بين الملفين في كشف الوكيل {agent} الحالي",
+     "badge_label": "تغيير اسم", "icon": "✎", "accent": "#6C3483", "accent_soft": "#F4ECF7", "accent_dark": "#4A235A",
+     "show_referral": True, "match": lambda r: "تغيير الاسم" in str(r.get("الإحالة") or "")},
+    {"key": "generic_update", "title": "تقرير تحديثات أخرى",
+     "subtitle": "عوائل طرأ عليها تحديث غير مصنف ضمن الحالات أعلاه في كشف الوكيل {agent} الحالي",
+     "badge_label": "تحديث عام", "icon": "↻", "accent": "#566573", "accent_soft": "#F4F6F6", "accent_dark": "#2C3E50",
+     "show_referral": True, "match": lambda r: str(r.get("الإحالة") or "").strip() == "تحديث بيانات"},
+]
+
+def _hex_to_rgb(hex_color):
+    h = hex_color.lstrip('#')
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+def _rgba(hex_color, alpha):
+    r, g, b = _hex_to_rgb(hex_color)
+    return f"rgba({r},{g},{b},{alpha})"
+
+_FONT_LINK = """<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">"""
+
+# تصميم زجاجي (Glassmorphism) موحّد لكل تقارير الـPDF: خط Cairo (من أشهر
+# وأجمل الخطوط العربية الرسمية المستخدمة بالمواقع الكبيرة)، عناوين وأرقام
+# أكبر وأوضح، ألوان نص دائماً واضحة مبنية على لون كل حالة (بدل الرصاصي
+# الخافت)، وجدول بأعمدة عرضها ثابت بالنسبة المئوية + قفل كامل لالتفاف
+# النص (nowrap + ellipsis) بحيث لا يتجاوز الجدول عرض الورقة مهما كبر الخط.
+_PDF_CSS = """
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; font-family: 'Cairo', 'Tajawal', 'Arial', sans-serif; color: #1B2631; background: #fff; }
+  @page { size: A4; margin: 12mm 8mm 14mm 8mm; }
+  .report-section.with-break { page-break-before: always; }
+  .header { text-align: center; padding-bottom: 16px; margin-bottom: 22px; border-bottom: 3px solid var(--accent); }
+  .icon-badge { display: inline-block; width: 64px; height: 64px; line-height: 64px; text-align: center; margin-bottom: 10px; border-radius: 20px; background: var(--accent); color: #fff; font-size: 30px; font-weight: 900; box-shadow: 0 4px 14px var(--glass-shadow); }
+  .header h1 { margin: 4px 0 12px; font-size: 28px; font-weight: 800; color: var(--accent-dark); }
+  .pills { display: flex; justify-content: center; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .desc-pill { display: inline-block; background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 999px; padding: 10px 28px; font-size: 13px; color: var(--accent-dark); font-weight: 600; box-shadow: 0 2px 10px var(--glass-shadow); }
+  .agent-pill { display: inline-block; background: var(--accent-dark); color: #fff; border-radius: 999px; padding: 8px 24px; font-size: 12.5px; font-weight: 700; box-shadow: 0 2px 10px var(--glass-shadow); white-space: nowrap; }
+  .stats { display: flex; gap: 12px; margin: 22px 0; }
+  .stat-card { flex: 1; text-align: center; padding: 16px 8px; border-radius: 18px; background: var(--glass-bg); border: 1px solid var(--glass-border); box-shadow: 0 3px 12px var(--glass-shadow); }
+  .stat-card .num { font-size: 32px; font-weight: 900; color: var(--accent-dark); display: block; line-height: 1.25; }
+  .stat-card .lbl { font-size: 12px; color: var(--accent-dark); font-weight: 600; opacity: 0.85; }
+  .table-wrap { border-radius: 18px; overflow: hidden; border: 1px solid var(--glass-border); box-shadow: 0 3px 14px var(--glass-shadow); }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13.5px; }
+  thead th { background: var(--accent); color: #fff; font-weight: 700; padding: 11px 5px; text-align: center; font-size: 12px; white-space: nowrap; }
+  tbody td { padding: 9px 5px; text-align: center; border-bottom: 1px solid var(--line-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  tbody tr:nth-child(even) { background: #ffffff; }
+  tbody tr:nth-child(odd) { background: var(--accent-soft); }
+  tbody tr { page-break-inside: avoid; }
+  .c-idx { color: var(--accent-dark); font-weight: 700; }
+  .c-name { text-align: right; font-weight: 700; color: #1B2631; }
+  .c-mono { font-family: 'Consolas', monospace; direction: ltr; color: var(--accent-dark); font-weight: 600; }
+  .c-num { font-weight: 800; color: #1B2631; }
+  .c-eligible { color: #196F3D; }
+  .c-withheld { color: #A93226; }
+  .c-referral { text-align: right; color: var(--accent-dark); font-weight: 600; white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.5; }
+  .footer { margin-top: 18px; padding-top: 10px; border-top: 1px solid var(--line-color); display: flex; justify-content: space-between; font-size: 11px; color: var(--accent-dark); font-weight: 600; }
+  .cover { text-align: center; padding-top: 55px; }
+  .cover h1 { font-size: 33px; color: var(--accent-dark); margin-bottom: 16px; }
+  .cover .summary-grid { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 32px; }
+  .cover .summary-card { width: 145px; padding: 16px 8px; border-radius: 18px; background: var(--glass-bg); border: 1px solid var(--glass-border); box-shadow: 0 3px 12px var(--glass-shadow); }
+  .cover .summary-card .num { display: block; font-size: 28px; font-weight: 900; color: var(--accent-dark); }
+  .cover .summary-card .lbl { font-size: 11.5px; color: var(--accent-dark); font-weight: 600; }
+"""
+
+def _wrap_pdf_document(title, body_html):
+    return f"""<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>{title}</title>
+{_FONT_LINK}
+<style>{_PDF_CSS}</style>
+</head>
+<body>
+{body_html}
+</body>
+</html>"""
+
+def _colgroup_html(show_referral):
+    widths = [4, 24, 13, 8, 8, 9, 34] if show_referral else [5, 40, 18, 12, 12, 13]
+    return "<colgroup>" + "".join(f'<col style="width:{w}%">' for w in widths) + "</colgroup>"
+
+def _category_section_html(rows, cat, card_col_name, agent_label, with_break=False):
+    title, subtitle = cat["title"], cat["subtitle"].format(agent=agent_label)
+    accent, accent_soft, accent_dark = cat["accent"], cat["accent_soft"], cat["accent_dark"]
+    badge_label, icon, show_referral = cat["badge_label"], cat["icon"], cat["show_referral"]
+
+    style_vars = (
+        f"--accent:{accent}; --accent-soft:{accent_soft}; --accent-dark:{accent_dark};"
+        f"--glass-bg:{_rgba(accent, 0.14)}; --glass-border:{_rgba(accent, 0.40)};"
+        f"--glass-shadow:{_rgba(accent_dark, 0.20)}; --line-color:{_rgba(accent_dark, 0.28)};"
+    )
+
+    total_people = sum(int(r.get("الأفراد الكلية", 0) or 0) for r in rows)
+    total_eligible = sum(int(r.get("الأفراد المستحقة", 0) or 0) for r in rows)
+    total_withheld = sum(int(r.get("الأفراد المحجوبين", 0) or 0) for r in rows)
+
+    referral_th = "<th>الإحالة</th>" if show_referral else ""
+    rows_html = ""
+    for i, r in enumerate(rows, start=1):
+        referral_td = f"<td class='c-referral'>{r.get('الإحالة', '')}</td>" if show_referral else ""
+        rows_html += f"""
+        <tr>
+          <td class="c-idx">{i}</td>
+          <td class="c-name">{r.get('اسم رب الأسرة', '')}</td>
+          <td class="c-mono">{r.get(card_col_name, '')}</td>
+          <td class="c-num">{r.get('الأفراد الكلية', '')}</td>
+          <td class="c-num c-eligible">{r.get('الأفراد المستحقة', '')}</td>
+          <td class="c-num c-withheld">{r.get('الأفراد المحجوبين', '')}</td>
+          {referral_td}
+        </tr>"""
+
+    section_class = "report-section with-break" if with_break else "report-section"
+    return f"""
+    <section class="{section_class}" style="{style_vars}">
+      <div class="header">
+        <div class="icon-badge">{icon}</div>
+        <h1>{title}</h1>
+        <div class="pills">
+          <div class="desc-pill">{subtitle}</div>
+          <div class="agent-pill">الوكيل: {agent_label}</div>
+        </div>
+      </div>
+      <div class="stats">
+        <div class="stat-card"><span class="num">{len(rows)}</span><span class="lbl">عدد العوائل ({badge_label})</span></div>
+        <div class="stat-card"><span class="num">{total_people}</span><span class="lbl">إجمالي الأفراد</span></div>
+        <div class="stat-card"><span class="num">{total_eligible}</span><span class="lbl">الأفراد المستحقة</span></div>
+        <div class="stat-card"><span class="num">{total_withheld}</span><span class="lbl">الأفراد المحجوبين</span></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          {_colgroup_html(show_referral)}
+          <thead><tr><th>ت</th><th>اسم رب الأسرة</th><th>{card_col_name}</th><th>الكلية</th><th>المستحقة</th><th>المحجوبين</th>{referral_th}</tr></thead>
+          <tbody>{rows_html}</tbody>
+        </table>
+      </div>
+      <div class="footer">
+        <span>نظام المقارنة الشامل والذكي — وكيل رقم {agent_label}</span>
+        <span>عدد السجلات: {len(rows)}</span>
+      </div>
+    </section>"""
+
+def _build_category_pdf_html(rows, cat, card_col_name, agent_label):
+    section = _category_section_html(rows, cat, card_col_name, agent_label, with_break=False)
+    return _wrap_pdf_document(cat["title"], section)
+
+def _derive_agent_label(new_file_name):
+    agent_label = new_file_name.replace(".docx", "").replace(".xlsx", "")
+    agent_label = re.sub(r'(FOOD|FLOUR)', '', agent_label, flags=re.IGNORECASE)
+    agent_label = re.sub(r'[._-]?pdf[_-]?\d*$', '', agent_label, flags=re.IGNORECASE)
+    return agent_label.strip("- ").strip()
+
+def _matched_categories(df_results_full):
+    all_rows = df_results_full.to_dict("records")
+    matched = []
+    for cat in CATEGORY_DEFS:
+        rows = [r for r in all_rows if cat["match"](r)]
+        if rows:
+            matched.append((cat, rows))
+    return matched
+
+def create_category_pdf_reports(df_results_full, card_col_name, new_file_name):
+    """يبني تقرير PDF أنيق مستقل لكل حالة من حالات المتغيرات المكتشفة
+    (مضافة، محذوفة، حجب كلي/جزئي، رفع حجب، زيادة/نقصان أفراد أو مستحقين،
+    تغيير اسم، تحديث عام) بتصميم زجاجي موحّد، ويُرجع فقط الحالات التي
+    فعلاً لها سجلات ضمن نتيجة المقارنة الحالية."""
+    agent_label = _derive_agent_label(new_file_name)
+    reports = []
+    for cat, rows in _matched_categories(df_results_full):
+        pdf_bytes = WeasyHTML(string=_build_category_pdf_html(rows, cat, card_col_name, agent_label)).write_pdf()
+        pdf_buffer = BytesIO(pdf_bytes)
+        pdf_buffer.seek(0)
+        reports.append({
+            "key": cat["key"],
+            "button_label": f"📄 تحميل PDF - {cat['title'].replace('تقرير ', '')}",
+            "file_name": f"{cat['title'].replace('تقرير ', '')} لـ الوكيل {agent_label}.pdf",
+            "pdf": pdf_buffer,
+        })
+    return reports, agent_label
+
+def create_combined_pdf_report(df_results_full, card_col_name, new_file_name):
+    """يبني ملف PDF واحد يجمع كل حالات المتغيرات المكتشفة معاً: صفحة غلاف
+    تلخّص أعداد كل حالة، تليها كل حالة بقسمها المستقل بنفس تصميمها ولونها
+    (كل حالة تبدأ بصفحة جديدة)."""
+    agent_label = _derive_agent_label(new_file_name)
+    matched = _matched_categories(df_results_full)
+    if not matched:
+        return None, agent_label
+
+    cover_accent, cover_soft, cover_dark = "#154360", "#EBF5FB", "#0B2E4F"
+    cover_style = (
+        f"--accent:{cover_accent}; --accent-soft:{cover_soft}; --accent-dark:{cover_dark};"
+        f"--glass-bg:{_rgba(cover_accent, 0.14)}; --glass-border:{_rgba(cover_accent, 0.40)};"
+        f"--glass-shadow:{_rgba(cover_dark, 0.20)};"
+    )
+    summary_cards = "".join(
+        f'<div class="summary-card"><span class="num">{len(rows)}</span><span class="lbl">{cat["badge_label"]}</span></div>'
+        for cat, rows in matched
+    )
+    cover_html = f"""
+    <section class="report-section" style="{cover_style}">
+      <div class="cover">
+        <div class="icon-badge" style="margin-bottom:16px;">★</div>
+        <h1>التقرير الشامل لكل حالات المتغيرات</h1>
+        <div class="pills"><div class="agent-pill">الوكيل: {agent_label}</div></div>
+        <div class="summary-grid">{summary_cards}</div>
+      </div>
+    </section>"""
+
+    sections_html = "".join(
+        _category_section_html(rows, cat, card_col_name, agent_label, with_break=True)
+        for cat, rows in matched
+    )
+
+    pdf_bytes = WeasyHTML(string=_wrap_pdf_document("التقرير الشامل", cover_html + sections_html)).write_pdf()
+    pdf_buffer = BytesIO(pdf_bytes)
+    pdf_buffer.seek(0)
+    return pdf_buffer, agent_label
+
+# -----------------------------------------------------------------------------
 # 6. الواجهة الرئيسية
 # -----------------------------------------------------------------------------
 st.markdown("<h3 style='text-align: right;'>📂 منطقة الرفع والمطابقة</h3>", unsafe_allow_html=True)
@@ -819,9 +1083,17 @@ if st.button("بدء المقارنة الذكية واستخراج المتغي
     if len(uploaded_files) == 2:
         with st.spinner('جاري التحليل وعزل الحالات تلقائياً...'):
             file1, file2 = uploaded_files[0], uploaded_files[1]
-            date1, date2 = extract_document_date(file1), extract_document_date(file2)
-            
-            file_a_is_older = (date1 < date2) if (date1 and date2) else True
+            ext1 = file1.name.split('.')[-1].lower()
+            ext2 = file2.name.split('.')[-1].lower()
+
+            if {ext1, ext2} == {"xlsx", "docx"}:
+                # قاعدة ثابتة: عند رفع ملف إكسل وملف وورد معاً، يُعتمد الإكسل دائماً كالملف
+                # السابق (القديم) والوورد دائماً كالملف الحديث، بغض النظر عن التاريخ المستشعر
+                file_a_is_older = (ext1 == "xlsx")
+            else:
+                date1, date2 = extract_document_date(file1), extract_document_date(file2)
+                file_a_is_older = (date1 < date2) if (date1 and date2) else True
+
             if swap_files: file_a_is_older = not file_a_is_older
                 
             if file_a_is_older:
@@ -876,7 +1148,20 @@ if st.button("بدء المقارنة الذكية واستخراج المتغي
                 with col_dl2:
                     word_stats = create_word_stats_report(counters, base_name)
                     st.download_button(label="📊 تحميل تقرير الإحصاء Word", data=word_stats, file_name=f"احصائيات_{base_name}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-                
+
+                category_reports, agent_label = create_category_pdf_reports(df_results_full, card_col_name, new_name)
+                if category_reports:
+                    st.markdown("<h4 style='text-align: right;'>📁 تقارير PDF منفصلة لكل حالة من حالات المتغيرات</h4>", unsafe_allow_html=True)
+
+                    combined_pdf, _ = create_combined_pdf_report(df_results_full, card_col_name, new_name)
+                    if combined_pdf:
+                        st.download_button(label="📚 تحميل تقرير PDF شامل يجمع كل الحالات", data=combined_pdf, file_name=f"التقرير الشامل لـ الوكيل {agent_label}.pdf", mime="application/pdf", key="pdf_combined")
+
+                    pdf_cols = st.columns(2)
+                    for idx, rep in enumerate(category_reports):
+                        with pdf_cols[idx % 2]:
+                            st.download_button(label=rep["button_label"], data=rep["pdf"], file_name=rep["file_name"], mime="application/pdf", key=f"pdf_{rep['key']}")
+
             else:
                 st.success("🎉 تطابق تام! لا توجد فروقات بين الملفين.")
     else:
