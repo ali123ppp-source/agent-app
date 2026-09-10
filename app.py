@@ -802,22 +802,71 @@ def create_word_stats_report(counters, filename_base):
     return buffer
 
 # -----------------------------------------------------------------------------
-# 5.5. تقارير PDF أنيقة منفصلة للعوائل المحذوفة والمضافة (تصميم A4 قابل للطباعة)
+# 5.5. تقارير PDF أنيقة منفصلة لكل حالة من حالات المتغيرات (تصميم A4 قابل للطباعة)
 # -----------------------------------------------------------------------------
-def _build_split_pdf_html(rows, kind, card_col_name, agent_label):
-    if kind == "deleted":
-        title, subtitle = "تقرير العوائل المحذوفة", f"العوائل الموجودة سابقاً والمفقودة من كشف الوكيل {agent_label} الحالي"
-        accent, accent_soft, accent_dark, badge_label, icon = "#C0392B", "#FDEDEC", "#922B21", "محذوفة", "-"
-    else:
-        title, subtitle = "تقرير العوائل المضافة", f"العوائل الجديدة التي ظهرت في كشف الوكيل {agent_label} الحالي"
-        accent, accent_soft, accent_dark, badge_label, icon = "#1E8449", "#EAFAF1", "#145A32", "مضافة", "+"
+# كل عنصر: مفتاح الحالة، عنوان التقرير، وصف فرعي، كلمة الشارة، الأيقونة، ألوان
+# التمييز، وهل يُعرض عمود "الإحالة" (سبب التغيير) بالجدول، ودالة تحدد هل الصف
+# ينتمي لهذه الحالة (صف واحد قد ينتمي لأكثر من حالة، مثل زيادة أفراد + حجب معاً)
+CATEGORY_DEFS = [
+    {"key": "added", "title": "تقرير العوائل المضافة",
+     "subtitle": "العوائل الجديدة التي ظهرت في كشف الوكيل {agent} الحالي",
+     "badge_label": "مضافة", "icon": "+", "accent": "#1E8449", "accent_soft": "#EAFAF1", "accent_dark": "#145A32",
+     "show_referral": False, "match": lambda r: r.get("meta_status") == "added"},
+    {"key": "deleted", "title": "تقرير العوائل المحذوفة",
+     "subtitle": "العوائل الموجودة سابقاً والمفقودة من كشف الوكيل {agent} الحالي",
+     "badge_label": "محذوفة", "icon": "-", "accent": "#C0392B", "accent_soft": "#FDEDEC", "accent_dark": "#922B21",
+     "show_referral": False, "match": lambda r: r.get("meta_status") == "deleted"},
+    {"key": "full_block", "title": "تقرير الحجب الكلي",
+     "subtitle": "عوائل تم حجب كامل أفرادها في كشف الوكيل {agent} الحالي",
+     "badge_label": "حجب كلي", "icon": "⛔", "accent": "#7B241C", "accent_soft": "#FDEDEC", "accent_dark": "#5B1A12",
+     "show_referral": True, "match": lambda r: "حجب كلي" in str(r.get("الإحالة") or "")},
+    {"key": "block_up", "title": "تقرير زيادة الحجب",
+     "subtitle": "عوائل ارتفع فيها عدد الأفراد المحجوبين في كشف الوكيل {agent} الحالي",
+     "badge_label": "زيادة حجب", "icon": "🔒", "accent": "#B9770E", "accent_soft": "#FEF9E7", "accent_dark": "#7D6608",
+     "show_referral": True, "match": lambda r: "تم حجب" in str(r.get("الإحالة") or "") and "حجب كلي" not in str(r.get("الإحالة") or "")},
+    {"key": "block_down", "title": "تقرير رفع الحجب",
+     "subtitle": "عوائل رُفع عنها الحجب جزئياً أو كلياً في كشف الوكيل {agent} الحالي",
+     "badge_label": "رفع حجب", "icon": "🔓", "accent": "#117864", "accent_soft": "#E8F8F5", "accent_dark": "#0B5345",
+     "show_referral": True, "match": lambda r: "رفع الحجب" in str(r.get("الإحالة") or "")},
+    {"key": "members_up", "title": "تقرير زيادة عدد الأفراد",
+     "subtitle": "عوائل زاد فيها عدد الأفراد الكلي (إضافة مولود) في كشف الوكيل {agent} الحالي",
+     "badge_label": "زيادة أفراد", "icon": "👶", "accent": "#1F618D", "accent_soft": "#EBF5FB", "accent_dark": "#154360",
+     "show_referral": True, "match": lambda r: "إضافة طفل" in str(r.get("الإحالة") or "")},
+    {"key": "members_down", "title": "تقرير نقصان عدد الأفراد",
+     "subtitle": "عوائل نقص فيها عدد الأفراد الكلي في كشف الوكيل {agent} الحالي",
+     "badge_label": "نقصان أفراد", "icon": "📉", "accent": "#A04000", "accent_soft": "#FDF2E9", "accent_dark": "#6E2C00",
+     "show_referral": True, "match": lambda r: bool(re.search(r'نقصان\s+\d+\s+نفر', str(r.get("الإحالة") or "")))},
+    {"key": "eligible_up", "title": "تقرير زيادة المستحقين",
+     "subtitle": "عوائل زاد فيها عدد الأفراد المستحقين في كشف الوكيل {agent} الحالي",
+     "badge_label": "زيادة مستحق", "icon": "📈", "accent": "#1F618D", "accent_soft": "#EBF5FB", "accent_dark": "#154360",
+     "show_referral": True, "match": lambda r: "زيادة مستحق" in str(r.get("الإحالة") or "")},
+    {"key": "eligible_down", "title": "تقرير نقصان المستحقين",
+     "subtitle": "عوائل نقص فيها عدد الأفراد المستحقين في كشف الوكيل {agent} الحالي",
+     "badge_label": "نقصان مستحق", "icon": "📉", "accent": "#B9770E", "accent_soft": "#FEF9E7", "accent_dark": "#7D6608",
+     "show_referral": True, "match": lambda r: "نقصان مستحق" in str(r.get("الإحالة") or "")},
+    {"key": "name_change", "title": "تقرير تغيير الأسماء",
+     "subtitle": "عوائل تغيّر اسم رب الأسرة فيها بين الملفين في كشف الوكيل {agent} الحالي",
+     "badge_label": "تغيير اسم", "icon": "✎", "accent": "#6C3483", "accent_soft": "#F4ECF7", "accent_dark": "#4A235A",
+     "show_referral": True, "match": lambda r: "تغيير الاسم" in str(r.get("الإحالة") or "")},
+    {"key": "generic_update", "title": "تقرير تحديثات أخرى",
+     "subtitle": "عوائل طرأ عليها تحديث غير مصنف ضمن الحالات أعلاه في كشف الوكيل {agent} الحالي",
+     "badge_label": "تحديث عام", "icon": "↻", "accent": "#566573", "accent_soft": "#F4F6F6", "accent_dark": "#2C3E50",
+     "show_referral": True, "match": lambda r: str(r.get("الإحالة") or "").strip() == "تحديث بيانات"},
+]
+
+def _build_category_pdf_html(rows, cat, card_col_name, agent_label):
+    title, subtitle = cat["title"], cat["subtitle"].format(agent=agent_label)
+    accent, accent_soft, accent_dark = cat["accent"], cat["accent_soft"], cat["accent_dark"]
+    badge_label, icon, show_referral = cat["badge_label"], cat["icon"], cat["show_referral"]
 
     total_people = sum(int(r.get("الأفراد الكلية", 0) or 0) for r in rows)
     total_eligible = sum(int(r.get("الأفراد المستحقة", 0) or 0) for r in rows)
     total_withheld = sum(int(r.get("الأفراد المحجوبين", 0) or 0) for r in rows)
 
+    referral_th = "<th>الإحالة</th>" if show_referral else ""
     rows_html = ""
     for i, r in enumerate(rows, start=1):
+        referral_td = f"<td class='c-referral'>{r.get('الإحالة', '')}</td>" if show_referral else ""
         rows_html += f"""
         <tr>
           <td class="c-idx">{i}</td>
@@ -826,6 +875,7 @@ def _build_split_pdf_html(rows, kind, card_col_name, agent_label):
           <td class="c-num">{r.get('الأفراد الكلية', '')}</td>
           <td class="c-num c-eligible">{r.get('الأفراد المستحقة', '')}</td>
           <td class="c-num c-withheld">{r.get('الأفراد المحجوبين', '')}</td>
+          {referral_td}
         </tr>"""
 
     return f"""<!doctype html>
@@ -850,17 +900,18 @@ def _build_split_pdf_html(rows, kind, card_col_name, agent_label):
   .stat-card {{ flex: 1; background: var(--accent-soft); border: 1px solid var(--line); border-right: 4px solid var(--accent); border-radius: 10px; padding: 10px 14px; text-align: center; }}
   .stat-card .num {{ font-size: 22px; font-weight: 900; color: var(--accent-dark); display: block; }}
   .stat-card .lbl {{ font-size: 11px; color: var(--muted); font-weight: 500; }}
-  table {{ width: 100%; border-collapse: collapse; font-size: 12px; }}
-  thead th {{ background: var(--accent); color: #fff; font-weight: 700; padding: 9px 8px; text-align: center; font-size: 11.5px; }}
+  table {{ width: 100%; border-collapse: collapse; font-size: 11.5px; }}
+  thead th {{ background: var(--accent); color: #fff; font-weight: 700; padding: 9px 8px; text-align: center; font-size: 11px; }}
   tbody td {{ padding: 7px 8px; text-align: center; border-bottom: 1px solid var(--line); }}
   tbody tr:nth-child(even) {{ background: #FAFAFA; }}
   tbody tr:nth-child(odd) {{ background: var(--accent-soft); opacity: 0.55; }}
   .c-idx {{ color: var(--muted); width: 32px; }}
   .c-name {{ text-align: right; font-weight: 600; }}
   .c-mono {{ font-family: 'Consolas', monospace; direction: ltr; color: #34495E; }}
-  .c-num {{ font-weight: 700; width: 60px; }}
+  .c-num {{ font-weight: 700; width: 55px; }}
   .c-eligible {{ color: #196F3D; }}
   .c-withheld {{ color: #A93226; }}
+  .c-referral {{ text-align: right; color: var(--accent-dark); font-weight: 600; }}
   tbody tr {{ page-break-inside: avoid; }}
   .footer {{ margin-top: 18px; padding-top: 8px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }}
 </style>
@@ -879,7 +930,7 @@ def _build_split_pdf_html(rows, kind, card_col_name, agent_label):
     <div class="stat-card"><span class="num">{total_withheld}</span><span class="lbl">الأفراد المحجوبين</span></div>
   </div>
   <table>
-    <thead><tr><th>ت</th><th>اسم رب الأسرة</th><th>{card_col_name}</th><th>الكلية</th><th>المستحقة</th><th>المحجوبين</th></tr></thead>
+    <thead><tr><th>ت</th><th>اسم رب الأسرة</th><th>{card_col_name}</th><th>الكلية</th><th>المستحقة</th><th>المحجوبين</th>{referral_th}</tr></thead>
     <tbody>{rows_html}</tbody>
   </table>
   <div class="footer">
@@ -889,23 +940,32 @@ def _build_split_pdf_html(rows, kind, card_col_name, agent_label):
 </body>
 </html>"""
 
-def create_split_pdf_reports(df_results_full, card_col_name, new_file_name):
+def create_category_pdf_reports(df_results_full, card_col_name, new_file_name):
+    """يبني تقرير PDF أنيق مستقل لكل حالة من حالات المتغيرات المكتشفة
+    (مضافة، محذوفة، حجب كلي/جزئي، رفع حجب، زيادة/نقصان أفراد أو مستحقين،
+    تغيير اسم، تحديث عام) بنفس تصميم التقارير المنفصلة، ويُرجع فقط الحالات
+    التي فعلاً لها سجلات ضمن نتيجة المقارنة الحالية."""
     agent_label = new_file_name.replace(".docx", "").replace(".xlsx", "")
     agent_label = re.sub(r'(FOOD|FLOUR)', '', agent_label, flags=re.IGNORECASE)
     agent_label = re.sub(r'[._-]?pdf[_-]?\d*$', '', agent_label, flags=re.IGNORECASE)
     agent_label = agent_label.strip("- ").strip()
 
-    deleted_rows = df_results_full[df_results_full.get("meta_status") == "deleted"].to_dict("records") if "meta_status" in df_results_full.columns else []
-    added_rows = df_results_full[df_results_full.get("meta_status") == "added"].to_dict("records") if "meta_status" in df_results_full.columns else []
-
-    deleted_pdf, added_pdf = None, None
-    if deleted_rows:
-        deleted_pdf = BytesIO(WeasyHTML(string=_build_split_pdf_html(deleted_rows, "deleted", card_col_name, agent_label)).write_pdf())
-        deleted_pdf.seek(0)
-    if added_rows:
-        added_pdf = BytesIO(WeasyHTML(string=_build_split_pdf_html(added_rows, "added", card_col_name, agent_label)).write_pdf())
-        added_pdf.seek(0)
-    return deleted_pdf, added_pdf, agent_label
+    all_rows = df_results_full.to_dict("records")
+    reports = []
+    for cat in CATEGORY_DEFS:
+        matched_rows = [r for r in all_rows if cat["match"](r)]
+        if not matched_rows:
+            continue
+        pdf_bytes = WeasyHTML(string=_build_category_pdf_html(matched_rows, cat, card_col_name, agent_label)).write_pdf()
+        pdf_buffer = BytesIO(pdf_bytes)
+        pdf_buffer.seek(0)
+        reports.append({
+            "key": cat["key"],
+            "button_label": f"📄 تحميل PDF - {cat['title'].replace('تقرير ', '')}",
+            "file_name": f"{cat['title'].replace('تقرير ', '')} لـ الوكيل {agent_label}.pdf",
+            "pdf": pdf_buffer,
+        })
+    return reports, agent_label
 
 # -----------------------------------------------------------------------------
 # 6. الواجهة الرئيسية
@@ -992,19 +1052,13 @@ if st.button("بدء المقارنة الذكية واستخراج المتغي
                     word_stats = create_word_stats_report(counters, base_name)
                     st.download_button(label="📊 تحميل تقرير الإحصاء Word", data=word_stats, file_name=f"احصائيات_{base_name}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
-                deleted_pdf, added_pdf, agent_label = create_split_pdf_reports(df_results_full, card_col_name, new_name)
-                if deleted_pdf or added_pdf:
-                    col_dl3, col_dl4 = st.columns(2)
-                    with col_dl3:
-                        if deleted_pdf:
-                            st.download_button(label="📕 تحميل تقرير PDF - العوائل المحذوفة", data=deleted_pdf, file_name=f"العوائل المحذوفة لـ الوكيل {agent_label}.pdf", mime="application/pdf")
-                        else:
-                            st.caption("لا توجد عوائل محذوفة لإصدار تقرير بها.")
-                    with col_dl4:
-                        if added_pdf:
-                            st.download_button(label="📗 تحميل تقرير PDF - العوائل المضافة", data=added_pdf, file_name=f"العوائل المضافة لـ الوكيل {agent_label}.pdf", mime="application/pdf")
-                        else:
-                            st.caption("لا توجد عوائل مضافة لإصدار تقرير بها.")
+                category_reports, agent_label = create_category_pdf_reports(df_results_full, card_col_name, new_name)
+                if category_reports:
+                    st.markdown("<h4 style='text-align: right;'>📁 تقارير PDF منفصلة لكل حالة من حالات المتغيرات</h4>", unsafe_allow_html=True)
+                    pdf_cols = st.columns(2)
+                    for idx, rep in enumerate(category_reports):
+                        with pdf_cols[idx % 2]:
+                            st.download_button(label=rep["button_label"], data=rep["pdf"], file_name=rep["file_name"], mime="application/pdf", key=f"pdf_{rep['key']}")
 
             else:
                 st.success("🎉 تطابق تام! لا توجد فروقات بين الملفين.")
