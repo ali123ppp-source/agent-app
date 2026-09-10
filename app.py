@@ -899,7 +899,7 @@ _PDF_CSS = """
   .c-num { font-weight: 800; color: #1B2631; }
   .c-eligible { color: #196F3D; }
   .c-withheld { color: #A93226; }
-  .c-referral { text-align: right; color: var(--accent-dark); font-weight: 600; }
+  .c-referral { text-align: right; color: var(--accent-dark); font-weight: 600; white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.5; }
   .footer { margin-top: 18px; padding-top: 10px; border-top: 1px solid var(--line-color); display: flex; justify-content: space-between; font-size: 11px; color: var(--accent-dark); font-weight: 600; }
   .cover { text-align: center; padding-top: 55px; }
   .cover h1 { font-size: 33px; color: var(--accent-dark); margin-bottom: 16px; }
@@ -924,7 +924,7 @@ def _wrap_pdf_document(title, body_html):
 </html>"""
 
 def _colgroup_html(show_referral):
-    widths = [4, 27, 14, 9, 9, 10, 27] if show_referral else [5, 40, 18, 12, 12, 13]
+    widths = [4, 24, 13, 8, 8, 9, 34] if show_referral else [5, 40, 18, 12, 12, 13]
     return "<colgroup>" + "".join(f'<col style="width:{w}%">' for w in widths) + "</colgroup>"
 
 def _category_section_html(rows, cat, card_col_name, agent_label, with_break=False):
