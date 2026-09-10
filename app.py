@@ -103,9 +103,12 @@ def extract_clean_records(file_obj, card_type="old"):
                     old_card = cells[4]
                     new_card = cells[5] if len(cells) > 5 else old_card
                     selected_card = old_card if card_type == "old" else new_card
+                    alt_card = new_card if card_type == "old" else old_card
+                    if alt_card == selected_card:
+                        alt_card = ""
                     seq = cells[6] if len(cells) > 6 else "-"
                     if selected_card:
-                        records[selected_card] = {"seq": seq, "name": name, "total": total, "eligible": eligible, "withheld": withheld}
+                        records[selected_card] = {"seq": seq, "name": name, "total": total, "eligible": eligible, "withheld": withheld, "alt_card": alt_card}
                 except ValueError: continue
 
         # استخراج جداول الوورد
@@ -146,6 +149,9 @@ def extract_clean_records(file_obj, card_type="old"):
             old_card = cells[card_indices[0]]
             new_card = cells[card_indices[-1]] if len(card_indices) > 1 else old_card
             selected_card = old_card if card_type == "old" else new_card
+            alt_card = new_card if card_type == "old" else old_card
+            if alt_card == selected_card:
+                alt_card = ""
             seq = "-"
             for i in range(len(cells)-1, card_indices[-1], -1):
                 if cells[i].isdigit():
@@ -155,7 +161,7 @@ def extract_clean_records(file_obj, card_type="old"):
             if len(digit_cells) >= 3: withheld, eligible, total = digit_cells[0], digit_cells[1], digit_cells[2]
             elif len(digit_cells) == 2: withheld, eligible, total = 0, digit_cells[0], digit_cells[1]
             else: continue
-            records[selected_card] = {"seq": seq, "name": cells[name_idx], "total": total, "eligible": eligible, "withheld": withheld}
+            records[selected_card] = {"seq": seq, "name": cells[name_idx], "total": total, "eligible": eligible, "withheld": withheld, "alt_card": alt_card}
             
     return records
 
@@ -331,37 +337,68 @@ def extract_records_smart(file_obj, card_type="old"):
             selected_card = (old_card or new_card) if card_type == "old" else (new_card or old_card)
             if not selected_card:
                 continue
+            alt_card = (new_card or old_card) if card_type == "old" else (old_card or new_card)
+            if alt_card == selected_card:
+                alt_card = ""
 
             total = _smart_to_int(cells[total_idx]) if total_idx is not None and total_idx <= max_idx else 0
             eligible = _smart_to_int(cells[eligible_idx]) if eligible_idx is not None and eligible_idx <= max_idx else 0
             withheld = _smart_to_int(cells[withheld_idx]) if withheld_idx is not None and withheld_idx <= max_idx else 0
             seq_val = cells[seq_idx].strip() if seq_idx is not None and seq_idx <= max_idx and cells[seq_idx].strip() else "-"
 
-            records[selected_card] = {"seq": seq_val, "name": name, "total": total, "eligible": eligible, "withheld": withheld}
+            records[selected_card] = {"seq": seq_val, "name": name, "total": total, "eligible": eligible, "withheld": withheld, "alt_card": alt_card}
 
     return records
 
-def pick_best_card_type(extract_fn, file_old, file_new):
-    """يجرب استخراج السجلات بكل من رقم البطاقة القديم والحديث كمفتاح مطابقة،
-    ويختار تلقائياً أياً منهما يعطي أكبر عدد تطابقات فعلية بين الملفين
-    (بدل الاعتماد على اختيار المستخدم اليدوي، اللي إذا غلط يطلع كل شيء
-    "مضاف/محذوف" بدون أي تطابق)."""
+def merge_records_by_either_card(old_data, new_data):
+    """يعتبر عائلتين متطابقتين إذا تطابق رقم البطاقة القديم بينهما أو
+    الحديث (أيهما نجح) بدل الاعتماد على رقم واحد فقط لكل المقارنة — يستخدم
+    الاثنين معاً كنقطة قوة للمطابقة. old_data/new_data مستخرجة بمفتاح
+    أساسي واحد (البطاقة القديمة) وتحمل حقل alt_card للبطاقة الأخرى؛ تُرجع
+    نسختين موحّدتين بنفس مفاتيح old_data لكل زوج تم العثور على تطابق له
+    (بأي من الرقمين)، ليقدر محرك المقارنة الحالي يشتغل عليهما بدون تعديل."""
+    new_by_alt = {}
+    for k, rec in new_data.items():
+        alt = rec.get("alt_card")
+        if alt and alt not in new_data:
+            new_by_alt.setdefault(alt, k)
+
+    unified_old, unified_new = {}, {}
+    used_new_keys = set()
+
+    for old_key, old_rec in old_data.items():
+        alt = old_rec.get("alt_card")
+        target_key = None
+        if old_key in new_data:
+            target_key = old_key
+        elif alt and alt in new_data:
+            target_key = alt
+        elif old_key in new_by_alt:
+            target_key = new_by_alt[old_key]
+        elif alt and alt in new_by_alt:
+            target_key = new_by_alt[alt]
+
+        unified_old[old_key] = old_rec
+        if target_key and target_key not in used_new_keys:
+            unified_new[old_key] = new_data[target_key]
+            used_new_keys.add(target_key)
+
+    for new_key, new_rec in new_data.items():
+        if new_key not in used_new_keys:
+            unified_new[new_key] = new_rec
+
+    return unified_old, unified_new
+
+def extract_matched_by_either_card(extract_fn, file_old, file_new):
+    """يستخرج الملفين برقم البطاقة القديم كمفتاح أساسي (مع حفظ الحديث
+    كبديل)، ثم يدمجهما بالاعتماد على أي الرقمين ينجح بالمطابقة."""
     file_old.seek(0); file_new.seek(0)
-    old_v_old = extract_fn(file_old, card_type="old")
+    old_data = extract_fn(file_old, card_type="old")
     file_old.seek(0)
-    new_v_old = extract_fn(file_new, card_type="old")
+    new_data = extract_fn(file_new, card_type="old")
     file_new.seek(0)
-    old_v_new = extract_fn(file_old, card_type="new")
-    file_old.seek(0)
-    new_v_new = extract_fn(file_new, card_type="new")
-    file_new.seek(0)
-
-    common_old = len(set(old_v_old.keys()) & set(new_v_old.keys()))
-    common_new = len(set(old_v_new.keys()) & set(new_v_new.keys()))
-
-    if common_new >= common_old:
-        return old_v_new, new_v_new, "رقم البطاقة الحديث"
-    return old_v_old, new_v_old, "رقم البطاقة القديم"
+    unified_old, unified_new = merge_records_by_either_card(old_data, new_data)
+    return unified_old, unified_new, "رقم البطاقة"
 
 # -----------------------------------------------------------------------------
 # 3. محرك المقارنة الذكي الثابت (محدث لدعم النموذج الرابع)
@@ -1279,19 +1316,19 @@ if st.button("بدء المقارنة الذكية واستخراج المتغي
                 card_col_name = "رقم البطاقة القديم"
             elif comparison_mode == "النموذج الخامس (كشف تلقائي بالعناوين)":
                 if card_type_auto:
-                    old_data, new_data, card_col_name = pick_best_card_type(extract_records_smart, file_old, file_new)
+                    old_data, new_data, card_col_name = extract_matched_by_either_card(extract_records_smart, file_old, file_new)
                 else:
                     old_data = extract_records_smart(file_old, card_type=card_type_param)
                     new_data = extract_records_smart(file_new, card_type=card_type_param)
             else:
                 if card_type_auto:
-                    old_data, new_data, card_col_name = pick_best_card_type(extract_clean_records, file_old, file_new)
+                    old_data, new_data, card_col_name = extract_matched_by_either_card(extract_clean_records, file_old, file_new)
                 else:
                     old_data = extract_clean_records(file_old, card_type=card_type_param)
                     new_data = extract_clean_records(file_new, card_type=card_type_param)
 
             if card_type_auto and comparison_mode not in ("النموذج الرابع (المستحق فقط)",):
-                st.caption(f"🔎 تم اختيار **{card_col_name}** تلقائياً كمفتاح مطابقة (أعلى نسبة تطابق بين الملفين).")
+                st.caption("🔎 تم استخدام رقم البطاقة القديم والحديث معاً تلقائياً لتقوية المطابقة بين الملفين.")
             
             results, results_ref, counters = process_comparison(old_data, new_data, comparison_mode, card_col_name, matching_engine)
             
