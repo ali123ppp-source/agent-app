@@ -891,7 +891,9 @@ def _build_split_pdf_html(rows, kind, card_col_name, agent_label):
 
 def create_split_pdf_reports(df_results_full, card_col_name, new_file_name):
     agent_label = new_file_name.replace(".docx", "").replace(".xlsx", "")
-    agent_label = re.sub(r'(FOOD|FLOUR)', '', agent_label, flags=re.IGNORECASE).strip("- ").strip()
+    agent_label = re.sub(r'(FOOD|FLOUR)', '', agent_label, flags=re.IGNORECASE)
+    agent_label = re.sub(r'[._-]?pdf[_-]?\d*$', '', agent_label, flags=re.IGNORECASE)
+    agent_label = agent_label.strip("- ").strip()
 
     deleted_rows = df_results_full[df_results_full.get("meta_status") == "deleted"].to_dict("records") if "meta_status" in df_results_full.columns else []
     added_rows = df_results_full[df_results_full.get("meta_status") == "added"].to_dict("records") if "meta_status" in df_results_full.columns else []
@@ -903,7 +905,7 @@ def create_split_pdf_reports(df_results_full, card_col_name, new_file_name):
     if added_rows:
         added_pdf = BytesIO(WeasyHTML(string=_build_split_pdf_html(added_rows, "added", card_col_name, agent_label)).write_pdf())
         added_pdf.seek(0)
-    return deleted_pdf, added_pdf
+    return deleted_pdf, added_pdf, agent_label
 
 # -----------------------------------------------------------------------------
 # 6. الواجهة الرئيسية
@@ -990,17 +992,17 @@ if st.button("بدء المقارنة الذكية واستخراج المتغي
                     word_stats = create_word_stats_report(counters, base_name)
                     st.download_button(label="📊 تحميل تقرير الإحصاء Word", data=word_stats, file_name=f"احصائيات_{base_name}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
-                deleted_pdf, added_pdf = create_split_pdf_reports(df_results_full, card_col_name, new_name)
+                deleted_pdf, added_pdf, agent_label = create_split_pdf_reports(df_results_full, card_col_name, new_name)
                 if deleted_pdf or added_pdf:
                     col_dl3, col_dl4 = st.columns(2)
                     with col_dl3:
                         if deleted_pdf:
-                            st.download_button(label="📕 تحميل تقرير PDF - العوائل المحذوفة", data=deleted_pdf, file_name=f"تقرير_العوائل_المحذوفة_{base_name}.pdf", mime="application/pdf")
+                            st.download_button(label="📕 تحميل تقرير PDF - العوائل المحذوفة", data=deleted_pdf, file_name=f"العوائل المحذوفة لـ الوكيل {agent_label}.pdf", mime="application/pdf")
                         else:
                             st.caption("لا توجد عوائل محذوفة لإصدار تقرير بها.")
                     with col_dl4:
                         if added_pdf:
-                            st.download_button(label="📗 تحميل تقرير PDF - العوائل المضافة", data=added_pdf, file_name=f"تقرير_العوائل_المضافة_{base_name}.pdf", mime="application/pdf")
+                            st.download_button(label="📗 تحميل تقرير PDF - العوائل المضافة", data=added_pdf, file_name=f"العوائل المضافة لـ الوكيل {agent_label}.pdf", mime="application/pdf")
                         else:
                             st.caption("لا توجد عوائل مضافة لإصدار تقرير بها.")
 
