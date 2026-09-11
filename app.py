@@ -1426,9 +1426,8 @@ def main():
     st.markdown("<h3 style='text-align: right;'>📂 منطقة الرفع والمطابقة</h3>", unsafe_allow_html=True)
     uploaded_files = st.file_uploader("ارفع ملفي الشهر السابق والحالي معاً", type=['docx', 'xlsx'], accept_multiple_files=True)
 
-    columns_confirmed = True  # لا يوجد جدول للتأكد منه إلا بعد رفع ملفين اثنين
     if uploaded_files and len(uploaded_files) == 2:
-        st.markdown("<h4 style='text-align: right;'>👁️ معاينة الأعمدة المكتشفة (تأكد قبل المتابعة)</h4>", unsafe_allow_html=True)
+        st.markdown("<h4 style='text-align: right;'>👁️ معاينة الأعمدة المكتشفة</h4>", unsafe_allow_html=True)
         preview_cols = st.columns(2)
         previews_ok = []
         for pf, pcol in zip(uploaded_files, preview_cols):
@@ -1447,12 +1446,7 @@ def main():
                         st.dataframe(pd.DataFrame(preview["sample_records"]), hide_index=True, use_container_width=True)
                     previews_ok.append(True)
 
-        if all(previews_ok):
-            columns_confirmed = st.checkbox("✅ أؤكد إن الأعمدة أعلاه مكتشفة صحيح، وأريد أكمل المقارنة")
-            if not columns_confirmed:
-                st.info("علّم المربع أعلاه بعد التأكد من الأعمدة عشان يفعّل زر بدء المقارنة.")
-        else:
-            st.caption("⚠️ ملف واحد أو أكثر ما ظهرت له معاينة — تقدر تكمل عادي وسيتم التحقق من سلامة الأرقام تلقائياً بعد الاستخراج.")
+        st.info("🔧 ما تحتاج تأكيد يدوي — النظام يفحص ويصحح اكتشاف الأعمدة تلقائياً لحظة الضغط على زر المقارنة، ويوقف نفسه بس لو لقى تناقض حقيقي بالأرقام (مو مجرد شك شكلي).")
 
     col_opts1, col_opts2, col_opts3 = st.columns(3)
     with col_opts1: comparison_mode = st.radio("🎯 نوع المقارنة:", ["النوع الأول", "النوع الثاني", "النوع الثالث", "النموذج الرابع (المستحق فقط)", "النموذج الخامس (كشف تلقائي بالعناوين)"], horizontal=True)
@@ -1466,7 +1460,7 @@ def main():
     pdf_template_ui = st.radio("🎨 نمط تصميم تقارير PDF:", ["الافتراضي (زجاجي)", "كانفا"], horizontal=True)
     pdf_template = "canva" if pdf_template_ui == "كانفا" else "glass"
 
-    if st.button("بدء المقارنة الذكية واستخراج المتغيرات والأوراق", disabled=not columns_confirmed):
+    if st.button("🔧 تصحيح الأعمدة تلقائياً وبدء المقارنة الذكية"):
         if len(uploaded_files) == 2:
             with st.spinner('جاري التحليل وعزل الحالات تلقائياً...'):
                 file1, file2 = uploaded_files[0], uploaded_files[1]
