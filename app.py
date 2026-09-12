@@ -1176,13 +1176,13 @@ _PDF_CSS = """
   .c-name { text-align: right; font-weight: 700; color: #1B2631; font-size: 12px; white-space: normal; overflow: visible; text-overflow: clip; }
   .c-name .name-text { line-height: 1.3; }
   .status-pill { display: inline-block; margin-top: 4px; padding: 2px 11px; border-radius: 999px; background: var(--pill-bg); border: 1px solid var(--pill-border); color: var(--accent-dark); font-size: 9px; font-weight: 600; line-height: 1.6; white-space: normal; }
-  .c-mono { font-family: 'Consolas', monospace; direction: ltr; color: var(--accent-dark); font-weight: 600; }
-  .c-num { font-weight: 800; color: #1B2631; }
+  .c-mono { font-family: 'Consolas', monospace; direction: ltr; color: var(--accent-dark); font-weight: 700; font-size: 16px; }
+  .c-num { font-weight: 800; color: #1B2631; font-size: 15px; }
   .c-eligible { color: #196F3D; }
   .c-withheld { color: #A93226; }
-  .c-blank { background: #fff !important; }
+  .c-blank { vertical-align: middle; }
   .th-blank { white-space: normal !important; font-size: 8.5px !important; line-height: 1.2; }
-  .blank-chip { display: block; margin: 3px auto 0; width: 65%; height: 18px; border: 1.2px solid #5D6D7E; border-radius: 6px; background: #fff; }
+  .blank-chip { display: block; margin: 0 auto; width: 85%; height: 32px; border: 1.2px solid #5D6D7E; border-radius: 10px; background: #fff; }
   .footer { margin-top: 18px; padding-top: 10px; border-top: 1px solid var(--line-color); display: flex; justify-content: space-between; font-size: 11px; color: var(--accent-dark); font-weight: 600; }
   .cover { text-align: center; padding-top: 55px; }
   .cover h1 { font-size: 33px; color: var(--accent-dark); margin-bottom: 16px; }
@@ -1243,13 +1243,13 @@ _PDF_CSS_CANVA = """
   .cv-name { text-align: right; font-weight: 700; color: #1B2631; font-size: 12px; white-space: normal; overflow: visible; text-overflow: clip; }
   .cv-name .name-text { line-height: 1.3; }
   .status-pill { display: inline-block; margin-top: 4px; padding: 2px 11px; border-radius: 999px; background: var(--pill-bg); border: 1px solid var(--pill-border); color: var(--accent-dark); font-size: 9px; font-weight: 600; line-height: 1.6; white-space: normal; }
-  .cv-mono { font-family: 'Consolas', monospace; direction: ltr; color: var(--accent-dark); font-weight: 600; }
-  .cv-num { font-weight: 800; color: #1B2631; }
+  .cv-mono { font-family: 'Consolas', monospace; direction: ltr; color: var(--accent-dark); font-weight: 700; font-size: 16px; }
+  .cv-num { font-weight: 800; color: #1B2631; font-size: 15px; }
   .cv-eligible { color: #196F3D; }
   .cv-withheld { color: #A93226; }
-  .cv-blank { background: #fff !important; }
+  .cv-blank { vertical-align: middle; }
   .th-blank { white-space: normal !important; font-size: 8.5px !important; line-height: 1.2; }
-  .blank-chip { display: block; margin: 3px auto 0; width: 65%; height: 18px; border: 1.2px solid #5D6D7E; border-radius: 6px; background: #fff; }
+  .blank-chip { display: block; margin: 0 auto; width: 85%; height: 32px; border: 1.2px solid #5D6D7E; border-radius: 10px; background: #fff; }
   tbody tr { page-break-inside: avoid; }
 
   .cv-footer { margin-top: 16px; display: flex; justify-content: space-between; font-size: 10.5px; color: #85929E; font-weight: 600; }
@@ -1337,7 +1337,7 @@ def _colgroup_html(show_referral=None):
     # الترتيب: ت، رقم البطاقة، الاسم، عمود فاصل فارغ (خلفية بيضاء دائماً)،
     # ثم باقي البيانات (كلي/مستحق/محجوب). عمود الاسم واسع يكفي الاسم
     # الرباعي الكامل + فقاعة الحالة تحته بسطر واحد متوازي بدون قص "...".
-    widths = [4, 14, 35, 8, 13, 13, 13]
+    widths = [4, 14, 33, 10, 13, 13, 13]
     return "<colgroup>" + "".join(f'<col style="width:{w}%">' for w in widths) + "</colgroup>"
 
 def _category_section_html(rows, cat, card_col_name, agent_label, with_break=False):
