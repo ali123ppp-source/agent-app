@@ -648,8 +648,8 @@ def process_comparison(old_data, new_data, mode, card_col_name, matching_engine)
             # شروط النموذج الرابع (المستحق فقط)
             if mode == "النموذج الرابع (المستحق فقط)":
                 is_changed = (d_elig != 0)
-                if d_elig > 0: notes.append(f"زيادة مستحق ({d_elig}) ➕")
-                elif d_elig < 0: notes.append(f"نقصان مستحق ({abs(d_elig)}) ➖")
+                if d_elig > 0: notes.append(f"زيادة مستحق ({d_elig})")
+                elif d_elig < 0: notes.append(f"نقصان مستحق ({abs(d_elig)})")
                 referral_text = " | ".join(notes) if notes else ""
             else:
                 is_changed = d_tot != 0 or d_elig != 0 or d_with != 0
@@ -659,8 +659,8 @@ def process_comparison(old_data, new_data, mode, card_col_name, matching_engine)
                 if new_v["withheld"] == new_v["total"] and new_v["total"] > 0 and d_with > 0:
                     notes.append("حجب كلي ❌")
                 else:
-                    if d_with > 0: notes.append(f"تم حجب {d_with} نفر ➖")
-                    elif d_with < 0: notes.append(f"تم رفع الحجب عن {abs(d_with)} نفر ➕")
+                    if d_with > 0: notes.append(f"تم حجب {d_with} نفر")
+                    elif d_with < 0: notes.append(f"تم رفع الحجب عن {abs(d_with)} نفر")
                 if d_tot > 0: notes.append("إضافة طفل 👶")
                 elif d_tot < 0: notes.append(f"نقصان {abs(d_tot)} نفر")
                 referral_text = " | ".join(notes) if notes else ("تحديث بيانات" if is_changed else "")
@@ -1089,11 +1089,11 @@ def create_word_stats_report(counters, filename_base):
 CATEGORY_DEFS = [
     {"key": "added", "title": "تقرير العوائل المضافة",
      "subtitle": "العوائل الجديدة التي ظهرت في كشف الوكيل {agent} الحالي",
-     "badge_label": "مضافة", "icon": "+", "accent": "#1E8449", "accent_soft": "#EAFAF1", "accent_dark": "#145A32",
+     "badge_label": "مضافة", "icon": "🆕", "accent": "#1E8449", "accent_soft": "#EAFAF1", "accent_dark": "#145A32",
      "show_referral": False, "match": lambda r: r.get("meta_status") == "added"},
     {"key": "deleted", "title": "تقرير العوائل المحذوفة",
      "subtitle": "العوائل الموجودة سابقاً والمفقودة من كشف الوكيل {agent} الحالي",
-     "badge_label": "محذوفة", "icon": "-", "accent": "#C0392B", "accent_soft": "#FDEDEC", "accent_dark": "#922B21",
+     "badge_label": "محذوفة", "icon": "🗑", "accent": "#C0392B", "accent_soft": "#FDEDEC", "accent_dark": "#922B21",
      "show_referral": False, "match": lambda r: r.get("meta_status") == "deleted"},
     {"key": "full_block", "title": "تقرير الحجب الكلي",
      "subtitle": "عوائل تم حجب كامل أفرادها في كشف الوكيل {agent} الحالي",
@@ -1156,16 +1156,16 @@ _PDF_CSS = """
   @page { size: A4; margin: 12mm 8mm 14mm 8mm; }
   .report-section.with-break { page-break-before: always; }
   .header { text-align: center; padding-bottom: 16px; margin-bottom: 22px; border-bottom: 3px solid var(--accent); }
-  .icon-badge { display: inline-block; width: 64px; height: 64px; line-height: 64px; text-align: center; margin-bottom: 10px; border-radius: 20px; background: var(--accent); color: #fff; font-size: 30px; font-weight: 900; box-shadow: 0 4px 14px var(--glass-shadow); }
+  .icon-badge { display: inline-block; width: 64px; height: 64px; line-height: 64px; text-align: center; margin-bottom: 10px; border-radius: 24px; background: var(--accent); color: #fff; font-size: 30px; font-weight: 900; box-shadow: 0 4px 14px var(--glass-shadow); }
   .header h1 { margin: 4px 0 12px; font-size: 28px; font-weight: 800; color: var(--accent-dark); }
   .pills { display: flex; justify-content: center; align-items: center; gap: 10px; flex-wrap: wrap; }
   .desc-pill { display: inline-block; background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 999px; padding: 10px 28px; font-size: 13px; color: var(--accent-dark); font-weight: 600; box-shadow: 0 2px 10px var(--glass-shadow); }
   .agent-pill { display: inline-block; background: var(--accent-dark); color: #fff; border-radius: 999px; padding: 8px 24px; font-size: 12.5px; font-weight: 700; box-shadow: 0 2px 10px var(--glass-shadow); white-space: nowrap; }
   .stats { display: flex; gap: 12px; margin: 22px 0; }
-  .stat-card { flex: 1; text-align: center; padding: 16px 8px; border-radius: 18px; background: var(--glass-bg); border: 1px solid var(--glass-border); box-shadow: 0 3px 12px var(--glass-shadow); }
+  .stat-card { flex: 1; text-align: center; padding: 16px 8px; border-radius: 20px; background: var(--glass-bg); border: 1px solid var(--glass-border); box-shadow: 0 3px 12px var(--glass-shadow); }
   .stat-card .num { font-size: 32px; font-weight: 900; color: var(--accent-dark); display: block; line-height: 1.25; }
   .stat-card .lbl { font-size: 12px; color: var(--accent-dark); font-weight: 600; opacity: 0.85; }
-  .table-wrap { border-radius: 18px; overflow: hidden; border: 1px solid var(--glass-border); box-shadow: 0 3px 14px var(--glass-shadow); }
+  .table-wrap { border-radius: 22px; overflow: hidden; border: 1px solid var(--glass-border); box-shadow: 0 3px 14px var(--glass-shadow); }
   table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13.5px; }
   thead th { background: var(--accent); color: #fff; font-weight: 700; padding: 11px 4px; text-align: center; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   tbody td { padding: 9px 5px; text-align: center; border-bottom: 1px solid var(--line-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1173,12 +1173,13 @@ _PDF_CSS = """
   tbody tr:nth-child(odd) { background: var(--accent-soft); }
   tbody tr { page-break-inside: avoid; }
   .c-idx { color: var(--accent-dark); font-weight: 700; }
-  .c-name { text-align: right; font-weight: 700; color: #1B2631; font-size: 12px; }
+  .c-name { text-align: right; font-weight: 700; color: #1B2631; font-size: 12px; white-space: normal; overflow: visible; text-overflow: clip; }
+  .c-name .name-text { line-height: 1.3; }
+  .status-pill { display: inline-block; margin-top: 4px; padding: 2px 11px; border-radius: 999px; background: var(--pill-bg); border: 1px solid var(--pill-border); color: var(--accent-dark); font-size: 9px; font-weight: 600; line-height: 1.6; white-space: normal; }
   .c-mono { font-family: 'Consolas', monospace; direction: ltr; color: var(--accent-dark); font-weight: 600; }
   .c-num { font-weight: 800; color: #1B2631; }
   .c-eligible { color: #196F3D; }
   .c-withheld { color: #A93226; }
-  .c-referral { text-align: right; color: var(--accent-dark); font-weight: 600; font-size: 11px; white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.5; }
   .footer { margin-top: 18px; padding-top: 10px; border-top: 1px solid var(--line-color); display: flex; justify-content: space-between; font-size: 11px; color: var(--accent-dark); font-weight: 600; }
   .cover { text-align: center; padding-top: 55px; }
   .cover h1 { font-size: 33px; color: var(--accent-dark); margin-bottom: 16px; }
@@ -1230,18 +1231,19 @@ _PDF_CSS_CANVA = """
 
   .cv-table-frame { position: relative; margin-top: 30px; }
   .cv-pill-tab { position: absolute; top: -18px; right: 20px; background: var(--accent); color: #fff; border-radius: 999px; padding: 7px 22px; font-size: 12.5px; font-weight: 800; box-shadow: 0 3px 8px var(--card-border); z-index: 2; }
-  .cv-table-wrap { border-radius: 20px; overflow: hidden; border: 1.5px solid var(--accent); background: #fff; }
+  .cv-table-wrap { border-radius: 24px; overflow: hidden; border: 1px solid var(--accent); background: #fff; }
   table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13.5px; }
-  thead th { background: #fff; color: var(--accent-dark); font-weight: 800; padding: 16px 4px 12px; text-align: center; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-bottom: 2.5px solid var(--accent); }
+  thead th { background: #fff; color: var(--accent-dark); font-weight: 800; padding: 16px 4px 12px; text-align: center; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-bottom: 2px solid var(--accent); }
   tbody td { padding: 9px 5px; text-align: center; border-bottom: 1px solid var(--card-border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: var(--table-tint); }
   tbody tr:last-child td { border-bottom: none; }
   .cv-idx { color: var(--accent-dark); font-weight: 700; }
-  .cv-name { text-align: right; font-weight: 700; color: #1B2631; font-size: 12px; }
+  .cv-name { text-align: right; font-weight: 700; color: #1B2631; font-size: 12px; white-space: normal; overflow: visible; text-overflow: clip; }
+  .cv-name .name-text { line-height: 1.3; }
+  .status-pill { display: inline-block; margin-top: 4px; padding: 2px 11px; border-radius: 999px; background: var(--pill-bg); border: 1px solid var(--pill-border); color: var(--accent-dark); font-size: 9px; font-weight: 600; line-height: 1.6; white-space: normal; }
   .cv-mono { font-family: 'Consolas', monospace; direction: ltr; color: var(--accent-dark); font-weight: 600; }
   .cv-num { font-weight: 800; color: #1B2631; }
   .cv-eligible { color: #196F3D; }
   .cv-withheld { color: #A93226; }
-  .cv-referral { text-align: right; color: var(--accent-dark); font-weight: 600; font-size: 11px; white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.5; }
   tbody tr { page-break-inside: avoid; }
 
   .cv-footer { margin-top: 16px; display: flex; justify-content: space-between; font-size: 10.5px; color: #85929E; font-weight: 600; }
@@ -1254,7 +1256,7 @@ _PDF_CSS_CANVA = """
   .cv-cover .cv-summary-card .lbl { font-size: 11.5px; color: #34495E; font-weight: 600; }
 """
 
-def _colgroup_html_canva(show_referral):
+def _colgroup_html_canva(show_referral=None):
     return _colgroup_html(show_referral)
 
 def _category_section_html_canva(rows, cat, card_col_name, agent_label, with_break=False):
@@ -1263,28 +1265,31 @@ def _category_section_html_canva(rows, cat, card_col_name, agent_label, with_bre
     accent, accent_soft, accent_dark = cat["accent"], cat["accent_soft"], cat["accent_dark"]
     badge_label, show_referral = esc(cat["badge_label"]), cat["show_referral"]
 
+    # نفس تخفيف الـ25% هنا للحدود والشبكة الخلفية — عدا شريط العنوان
+    # والشارات (cv-pill-tab) اللي تبقى بلون var(--accent) الصافي. خلفية
+    # الجدول (--table-tint 5%) تبقى بدون تغيير كما هي (طلب محدد سابق).
     style_vars = (
         f"--accent:{accent}; --accent-soft:{accent_soft}; --accent-dark:{accent_dark};"
-        f"--table-tint:{_rgba(accent, 0.05)}; --card-border:{_rgba(accent, 0.30)}; --grid-line:{_rgba(accent_dark, 0.045)};"
+        f"--table-tint:{_rgba(accent, 0.05)}; --card-border:{_rgba(accent, 0.225)}; --grid-line:{_rgba(accent_dark, 0.034)};"
+        f"--pill-bg:{_rgba(accent, 0.16)}; --pill-border:{_rgba(accent, 0.35)};"
     )
 
     total_people = sum(int(r.get("الأفراد الكلية", 0) or 0) for r in rows)
     total_eligible = sum(int(r.get("الأفراد المستحقة", 0) or 0) for r in rows)
     total_withheld = sum(int(r.get("الأفراد المحجوبين", 0) or 0) for r in rows)
 
-    referral_th = "<th>الإحالة</th>" if show_referral else ""
     rows_html = ""
     for i, r in enumerate(rows, start=1):
-        referral_td = f"<td class='cv-referral'>{esc(r.get('الإحالة', ''))}</td>" if show_referral else ""
+        referral_text = esc(r.get('الإحالة', '')) if show_referral else ""
+        status_pill = f"<div class='status-pill'>{referral_text}</div>" if referral_text else ""
         rows_html += f"""
         <tr>
           <td class="cv-idx">{i}</td>
-          <td class="cv-name">{esc(r.get('اسم رب الأسرة', ''))}</td>
+          <td class="cv-name"><div class="name-text">{esc(r.get('اسم رب الأسرة', ''))}</div>{status_pill}</td>
           <td class="cv-mono">{esc(r.get(card_col_name, ''))}</td>
           <td class="cv-num">{esc(r.get('الأفراد الكلية', ''))}</td>
           <td class="cv-num cv-eligible">{esc(r.get('الأفراد المستحقة', ''))}</td>
           <td class="cv-num cv-withheld">{esc(r.get('الأفراد المحجوبين', ''))}</td>
-          {referral_td}
         </tr>"""
 
     section_class = "cv-section with-break" if with_break else "cv-section"
@@ -1305,8 +1310,8 @@ def _category_section_html_canva(rows, cat, card_col_name, agent_label, with_bre
         <div class="cv-pill-tab">{badge_label}</div>
         <div class="cv-table-wrap">
           <table>
-            {_colgroup_html_canva(show_referral)}
-            <thead><tr><th>ت</th><th>اسم رب الأسرة</th><th>{esc(card_col_name)}</th><th>الكلية</th><th>المستحقة</th><th>المحجوبين</th>{referral_th}</tr></thead>
+            {_colgroup_html_canva()}
+            <thead><tr><th>ت</th><th>اسم رب الأسرة</th><th>{esc(card_col_name)}</th><th>الكلية</th><th>المستحقة</th><th>المحجوبين</th></tr></thead>
             <tbody>{rows_html}</tbody>
           </table>
         </div>
@@ -1321,11 +1326,11 @@ def _build_category_pdf_html_canva(rows, cat, card_col_name, agent_label):
     section = _category_section_html_canva(rows, cat, card_col_name, agent_label, with_break=False)
     return _wrap_pdf_document(cat["title"], section, css=_PDF_CSS_CANVA)
 
-def _colgroup_html(show_referral):
-    # عمود الاسم أوسع بشكل ملحوظ (30%/46%) عشان الاسم الرباعي الكامل يبين
-    # بسطر واحد متوازي بدون قص "..." — بدل ما كان يشترك بعرض صغير مع باقي
-    # الأعمدة ويضطر يقتصّ الأسماء الطويلة.
-    widths = [4, 30, 10, 9, 9, 10, 28] if show_referral else [5, 46, 14, 11, 11, 13]
+def _colgroup_html(show_referral=None):
+    # عمود واحد فقط للاسم (بدون عمود إحالة منفصل — نص الحالة صار فقاعة
+    # صغيرة تحت الاسم بنفس الخلية) بعرض واسع يكفي الاسم الرباعي الكامل
+    # بسطر واحد متوازي بدون قص "...".
+    widths = [5, 44, 15, 12, 12, 12]
     return "<colgroup>" + "".join(f'<col style="width:{w}%">' for w in widths) + "</colgroup>"
 
 def _category_section_html(rows, cat, card_col_name, agent_label, with_break=False):
@@ -1334,29 +1339,33 @@ def _category_section_html(rows, cat, card_col_name, agent_label, with_break=Fal
     accent, accent_soft, accent_dark = cat["accent"], cat["accent_soft"], cat["accent_dark"]
     badge_label, icon, show_referral = esc(cat["badge_label"]), cat["icon"], cat["show_referral"]
 
+    # تخفيف تركيز كل الألوان الزخرفية (خلفيات، حدود، ظلال، خطوط فاصلة)
+    # بنسبة 25% تجاه الأبيض — ما عدا شريط العنوان والشارات (icon-badge،
+    # agent-pill) اللي تستخدم var(--accent)/var(--accent-dark) الصافية
+    # بدون أي تخفيف، عشان تبقى العناوين واضحة وقوية دائماً.
     style_vars = (
         f"--accent:{accent}; --accent-soft:{accent_soft}; --accent-dark:{accent_dark};"
-        f"--glass-bg:{_rgba(accent, 0.14)}; --glass-border:{_rgba(accent, 0.40)};"
-        f"--glass-shadow:{_rgba(accent_dark, 0.20)}; --line-color:{_rgba(accent_dark, 0.28)};"
+        f"--glass-bg:{_rgba(accent, 0.105)}; --glass-border:{_rgba(accent, 0.30)};"
+        f"--glass-shadow:{_rgba(accent_dark, 0.15)}; --line-color:{_rgba(accent_dark, 0.21)};"
+        f"--pill-bg:{_rgba(accent, 0.16)}; --pill-border:{_rgba(accent, 0.35)};"
     )
 
     total_people = sum(int(r.get("الأفراد الكلية", 0) or 0) for r in rows)
     total_eligible = sum(int(r.get("الأفراد المستحقة", 0) or 0) for r in rows)
     total_withheld = sum(int(r.get("الأفراد المحجوبين", 0) or 0) for r in rows)
 
-    referral_th = "<th>الإحالة</th>" if show_referral else ""
     rows_html = ""
     for i, r in enumerate(rows, start=1):
-        referral_td = f"<td class='c-referral'>{esc(r.get('الإحالة', ''))}</td>" if show_referral else ""
+        referral_text = esc(r.get('الإحالة', '')) if show_referral else ""
+        status_pill = f"<div class='status-pill'>{referral_text}</div>" if referral_text else ""
         rows_html += f"""
         <tr>
           <td class="c-idx">{i}</td>
-          <td class="c-name">{esc(r.get('اسم رب الأسرة', ''))}</td>
+          <td class="c-name"><div class="name-text">{esc(r.get('اسم رب الأسرة', ''))}</div>{status_pill}</td>
           <td class="c-mono">{esc(r.get(card_col_name, ''))}</td>
           <td class="c-num">{esc(r.get('الأفراد الكلية', ''))}</td>
           <td class="c-num c-eligible">{esc(r.get('الأفراد المستحقة', ''))}</td>
           <td class="c-num c-withheld">{esc(r.get('الأفراد المحجوبين', ''))}</td>
-          {referral_td}
         </tr>"""
 
     section_class = "report-section with-break" if with_break else "report-section"
@@ -1378,8 +1387,8 @@ def _category_section_html(rows, cat, card_col_name, agent_label, with_break=Fal
       </div>
       <div class="table-wrap">
         <table>
-          {_colgroup_html(show_referral)}
-          <thead><tr><th>ت</th><th>اسم رب الأسرة</th><th>{esc(card_col_name)}</th><th>الكلية</th><th>المستحقة</th><th>المحجوبين</th>{referral_th}</tr></thead>
+          {_colgroup_html()}
+          <thead><tr><th>ت</th><th>اسم رب الأسرة</th><th>{esc(card_col_name)}</th><th>الكلية</th><th>المستحقة</th><th>المحجوبين</th></tr></thead>
           <tbody>{rows_html}</tbody>
         </table>
       </div>
