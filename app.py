@@ -1658,12 +1658,11 @@ def _classic_table_html(rows, card_col_name):
     </table>"""
 
 def create_classic_report_pdf(df_results_full, card_col_name, new_file_name):
-    """يبني تقرير PDF كلاسيكي (عنوان أحمر، جدول أسود الحدود) — بطلب صريح:
-    العوائل المضافة تُستبعد من الجدول الشامل وتصير بملف PDF مستقل خاص فيها،
-    والعوائل المنقولة تُستبعد أيضاً وتصير بجدول منفصل (قسم ثاني بنفس الملف
-    الرئيسي، بعد الجدول الشامل بصفحة جديدة) — فيبقى الجدول الشامل خاصاً
-    بالعوائل المعدّلة فقط (تغيير اسم/حجب/عدد أفراد...). يرجع
-    (main_pdf, added_pdf_or_None, agent_name)."""
+    """يبني تقرير PDF كلاسيكي واحد (عنوان أحمر، جدول أسود الحدود) بثلاثة
+    أقسام منفصلة داخل نفس الملف — كل قسم بصفحة جديدة وبمربعات إحصائية
+    خاصة فيه: الجدول الشامل (العوائل المعدّلة فقط)، ثم العوائل المضافة،
+    ثم العوائل المنقولة. لا تختلط أي حالة بجدول حالة ثانية. يرجع
+    (pdf_buffer, agent_name)."""
     agent_name, agency_suffix = _classic_agent_name_and_suffix(new_file_name)
 
     all_rows = df_results_full.to_dict("records")
@@ -1672,6 +1671,12 @@ def create_classic_report_pdf(df_results_full, card_col_name, new_file_name):
     modified_rows = [r for r in all_rows if r.get("meta_status") not in ("added", "deleted")]
 
     body_html = _classic_stats_html(modified_rows, "معدّلة") + _classic_table_html(modified_rows, card_col_name)
+    if added_rows:
+        body_html += (
+            '<div class="subtitle">العوائل المضافة</div>'
+            + _classic_stats_html(added_rows, "مضافة")
+            + _classic_table_html(added_rows, card_col_name)
+        )
     if transferred_rows:
         body_html += (
             '<div class="subtitle">العوائل المنقولة</div>'
@@ -1687,26 +1692,10 @@ def create_classic_report_pdf(df_results_full, card_col_name, new_file_name):
   {body_html}
 </body>
 </html>"""
-    main_pdf_bytes = WeasyHTML(string=main_html).write_pdf()
-    main_pdf_buffer = BytesIO(main_pdf_bytes)
-    main_pdf_buffer.seek(0)
-
-    added_pdf_buffer = None
-    if added_rows:
-        added_html = f"""<!doctype html>
-<html lang="ar" dir="rtl">
-<head><meta charset="utf-8"><title>تقرير العوائل المضافة</title>{_FONT_LINK}<style>{_CLASSIC_PDF_CSS}</style></head>
-<body>
-  <div class="title">تقرير العوائل المضافة — الوكيل: {esc(agent_name)}{esc(agency_suffix)}</div>
-  {_classic_stats_html(added_rows, "مضافة")}
-  {_classic_table_html(added_rows, card_col_name)}
-</body>
-</html>"""
-        added_pdf_bytes = WeasyHTML(string=added_html).write_pdf()
-        added_pdf_buffer = BytesIO(added_pdf_bytes)
-        added_pdf_buffer.seek(0)
-
-    return main_pdf_buffer, added_pdf_buffer, agent_name
+    pdf_bytes = WeasyHTML(string=main_html).write_pdf()
+    pdf_buffer = BytesIO(pdf_bytes)
+    pdf_buffer.seek(0)
+    return pdf_buffer, agent_name
 
 
 def decide_old_new_files(file1, file2, swap_files=False):
@@ -1875,15 +1864,13 @@ def run_comparison_for_pair(file1, file2, comparison_mode, card_type_auto, card_
                 st.download_button(label="📊 تحميل تقرير الإحصاء Word", data=word_stats, file_name=f"احصائيات_{base_name}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", key=f"word_stats{key_suffix}")
 
             if pdf_template == "classic":
-                # النموذج الأصلي: الجدول الشامل الآن خاص بالعوائل المعدّلة
-                # فقط — العوائل المضافة استُبعدت وصارت بملف PDF مستقل خاص
-                # فيها، والمنقولة استُبعدت وصارت بجدول منفصل بنفس الملف
-                # الرئيسي (بطلب صريح).
-                classic_pdf, classic_added_pdf, classic_agent_label = create_classic_report_pdf(df_results_full, card_col_name, new_name)
-                st.markdown("<h4 style='text-align: right;'>📜 النموذج الأصلي (العوائل المعدّلة + قسم منفصل للمنقولة)</h4>", unsafe_allow_html=True)
+                # النموذج الأصلي: ملف واحد بثلاثة أقسام منفصلة (كل قسم
+                # بصفحة جديدة ومربعاته الإحصائية الخاصة) — الجدول الشامل
+                # (معدّلة فقط)، ثم المضافة، ثم المنقولة. بطلب صريح: كل شي
+                # بنفس الملف، ولا حالة تختلط بجدول حالة ثانية.
+                classic_pdf, classic_agent_label = create_classic_report_pdf(df_results_full, card_col_name, new_name)
+                st.markdown("<h4 style='text-align: right;'>📜 النموذج الأصلي (أقسام منفصلة: معدّلة، مضافة، منقولة)</h4>", unsafe_allow_html=True)
                 st.download_button(label="📜 تحميل النموذج الأصلي (PDF)", data=classic_pdf, file_name=f"تقرير متغيرات الوكيل {classic_agent_label}.pdf", mime="application/pdf", key=f"pdf_classic{key_suffix}")
-                if classic_added_pdf:
-                    st.download_button(label="📜 تحميل تقرير العوائل المضافة (PDF مستقل)", data=classic_added_pdf, file_name=f"تقرير العوائل المضافة - الوكيل {classic_agent_label}.pdf", mime="application/pdf", key=f"pdf_classic_added{key_suffix}")
             else:
                 category_reports, agent_label = create_category_pdf_reports(df_results_full, card_col_name, new_name, template=pdf_template)
                 if category_reports:
