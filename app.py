@@ -1792,7 +1792,29 @@ def main():
 
 
 
+    # حل مشكلة اختفاء النتائج عند الضغط على أي زر تحميل أو أي عنصر تفاعلي
+    # آخر بالصفحة: Streamlit يعيد تشغيل كامل السكربت من الصفر عند أي تفاعل
+    # (حتى نقرة زر تحميل ملف)، وst.button() يرجع True فقط باللحظة الفعلية
+    # للنقر عليه، فيرجع False بأي إعادة تشغيل لاحقة ولو ناتجة عن نقر زر
+    # تحميل — فتختفي كل النتائج المعروضة داخل جسم الشرط بالكامل. الحل:
+    # نخزن "طلب التشغيل" وبصمة الملفات المستخدمة بجلسة المستخدم
+    # (st.session_state) بدل الاعتماد المباشر على قيمة st.button()، فتبقى
+    # النتائج ثابتة عبر أي عدد من التفاعلات، ولا تُمسح إلا لما يرفع
+    # المستخدم ملفات مختلفة أو يضغط الزر من جديد (عملية جديدة فعلاً).
+    if "comparison_triggered" not in st.session_state:
+        st.session_state["comparison_triggered"] = False
+    if "comparison_file_signature" not in st.session_state:
+        st.session_state["comparison_file_signature"] = None
+
+    current_signature = tuple((f.name, f.size) for f in uploaded_files) if uploaded_files else None
+    if st.session_state["comparison_file_signature"] != current_signature:
+        st.session_state["comparison_triggered"] = False
+
     if st.button("🔧 تصحيح الأعمدة تلقائياً وبدء المقارنة الذكية"):
+        st.session_state["comparison_triggered"] = True
+        st.session_state["comparison_file_signature"] = current_signature
+
+    if st.session_state["comparison_triggered"]:
         if not uploaded_files or len(uploaded_files) < 2:
             st.warning("⚠️ يرجى رفع ملفين على الأقل (ملف قديم وملف حديث) للتمكن من بدء المقارنة.")
         elif len(uploaded_files) == 2:
