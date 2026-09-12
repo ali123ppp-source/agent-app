@@ -561,42 +561,39 @@ def _file_key_set(records):
             keys.add(alt)
     return keys
 
-def auto_pair_files_by_content(xlsx_files, docx_files):
-    """يطابق كل ملف xlsx مع أفضل ملف docx بالاعتماد على أكبر تقاطع فعلي
-    ببيانات البطاقات المستخرجة من الملفين (مو أسماء الملفات) — أدق طريقة
+def auto_pair_files_by_content(files):
+    """يطابق كل ملف مع أفضل ملف آخر بالاعتماد على أكبر تقاطع فعلي ببيانات
+    البطاقات المستخرجة منهما (مو أسماء الملفات ولا امتدادها) — أدق طريقة
     لتحديد أي ملفين ينتميان لنفس الوكيل عند رفع عدة أزواج دفعة وحدة، لأن
-    أسماء الملفات غالباً غير موحّدة الصيغة بين الوكلاء. يرجع (pairs,
-    unmatched_xlsx, unmatched_docx) حيث pairs قائمة (xlsx_file, docx_file,
-    overlap_count) مرتّبة حسب ترتيب المطابقة (الأقوى أولاً)."""
-    xlsx_keysets = []
-    for f in xlsx_files:
+    أسماء الملفات غالباً غير موحّدة الصيغة بين الوكلاء. يشتغل بأي مزيج من
+    الامتدادات: xlsx مع docx (الحالة المعتادة)، أو كل الملفات xlsx فقط، أو
+    كلها docx فقط — تحديد أيهما "قديم" وأيهما "جديد" داخل كل زوج يصير لاحقاً
+    بمنطق منفصل (run_comparison_for_pair). يرجع (pairs, unmatched) حيث
+    pairs قائمة (file_a, file_b, overlap_count) مرتّبة حسب قوة المطابقة."""
+    keysets = []
+    for f in files:
         data, _, _ = _extract_with_smart_fallback(f, "old")
-        xlsx_keysets.append(_file_key_set(data))
-    docx_keysets = []
-    for f in docx_files:
-        data, _, _ = _extract_with_smart_fallback(f, "old")
-        docx_keysets.append(_file_key_set(data))
+        keysets.append(_file_key_set(data))
 
+    n = len(files)
     scored = []
-    for i in range(len(xlsx_files)):
-        for j in range(len(docx_files)):
-            overlap = len(xlsx_keysets[i] & docx_keysets[j])
+    for i in range(n):
+        for j in range(i + 1, n):
+            overlap = len(keysets[i] & keysets[j])
             scored.append((overlap, i, j))
     scored.sort(key=lambda t: -t[0])
 
-    remaining_x = set(range(len(xlsx_files)))
-    remaining_d = set(range(len(docx_files)))
+    remaining = set(range(n))
     pairs = []
     for overlap, i, j in scored:
-        if i not in remaining_x or j not in remaining_d or overlap == 0:
+        if i not in remaining or j not in remaining or overlap == 0:
             continue
-        pairs.append((xlsx_files[i], docx_files[j], overlap))
-        remaining_x.discard(i)
-        remaining_d.discard(j)
+        pairs.append((files[i], files[j], overlap))
+        remaining.discard(i)
+        remaining.discard(j)
 
-    unmatched_xlsx = [xlsx_files[i] for i in sorted(remaining_x)]
-    unmatched_docx = [docx_files[j] for j in sorted(remaining_d)]
-    return pairs, unmatched_xlsx, unmatched_docx
+    unmatched = [files[i] for i in sorted(remaining)]
+    return pairs, unmatched
 
 # -----------------------------------------------------------------------------
 # 2.7. حارس سلامة البيانات: يرفض الاعتماد على سجلات فاسدة بدل تمريرها
@@ -1576,8 +1573,22 @@ def run_comparison_for_pair(file1, file2, comparison_mode, card_type_auto, card_
             # السابق (القديم) والوورد دائماً كالملف الحديث، بغض النظر عن التاريخ المستشعر
             file_a_is_older = (ext1 == "xlsx")
         else:
+            # نفس الامتداد بالملفين (كلاهما xlsx أو كلاهما docx) — قاعدة
+            # الامتداد الثابتة ما تنطبق هنا. نجرب أولاً تاريخ فعلي من محتوى
+            # الملف (docx فقط)، وإلا نعتمد على حجم الملف: الأكبر حجماً هو
+            # الأحدث (الكشف الأحدث عادة يحوي عوائل أكثر بمرور الوقت). ماكو
+            # وقت تعديل حقيقي متاح من المتصفح بواجهة الرفع (Streamlit ما
+            # يعرضه)، فالحجم أدق مؤشر متاح فعلياً بهذي الحالة تحديداً.
             date1, date2 = extract_document_date(file1), extract_document_date(file2)
-            file_a_is_older = (date1 < date2) if (date1 and date2) else True
+            if date1 and date2:
+                file_a_is_older = (date1 < date2)
+                st.caption("🗓️ الملفين بنفس الصيغة — اعتمدنا تاريخ مكتوب داخل الملفين لتحديد الأحدث.")
+            elif file1.size != file2.size:
+                file_a_is_older = (file1.size < file2.size)
+                st.caption("📏 الملفين بنفس الصيغة وبلا تاريخ واضح بالمحتوى — اعتمدنا حجم الملف (الأكبر = الأحدث) لتحديد الأقدم والأحدث.")
+            else:
+                file_a_is_older = True
+                st.caption("⚠️ الملفين بنفس الصيغة ونفس الحجم بالضبط — ما قدرنا نميّز الأحدث تلقائياً، اعتمدنا أول ملف رفعته كـ'قديم'. راجع مربع 'عكس الملفين يدوياً' إذا كان الترتيب غلط.")
 
         if swap_files: file_a_is_older = not file_a_is_older
 
@@ -1787,24 +1798,23 @@ def main():
         elif len(uploaded_files) == 2:
             run_comparison_for_pair(uploaded_files[0], uploaded_files[1], comparison_mode, card_type_auto, card_type_param, card_choice_ui, matching_engine, pdf_template, swap_files=swap_files)
         else:
-            xlsx_files = [f for f in uploaded_files if f.name.split('.')[-1].lower() == "xlsx"]
-            docx_files = [f for f in uploaded_files if f.name.split('.')[-1].lower() == "docx"]
-            if not xlsx_files or len(xlsx_files) != len(docx_files):
-                st.error(f"❌ عدد ملفات xlsx ({len(xlsx_files)}) لازم يطابق عدد ملفات docx ({len(docx_files)}) عشان نقدر نكوّن أزواج مقارنة صحيحة — كل زوج مقارنة يحتاج ملف قديم (xlsx) وملف حديث (docx) واحد بالضبط.")
-            else:
-                with st.spinner("🔎 جاري تحليل محتوى كل ملف وتحديد أفضل مطابقة تلقائياً حسب البيانات الفعلية (رقم البطاقة)..."):
-                    pairs, unmatched_xlsx, unmatched_docx = auto_pair_files_by_content(xlsx_files, docx_files)
+            # المطابقة التلقائية تشتغل بأي مزيج امتدادات (xlsx مع docx، أو
+            # كلها xlsx، أو كلها docx) — تحديد الأقدم/الأحدث داخل كل زوج
+            # يصير لاحقاً بمنطق منفصل (امتداد مختلف → قاعدة ثابتة، نفس
+            # الامتداد → تاريخ محتوى أو حجم الملف).
+            with st.spinner("🔎 جاري تحليل محتوى كل ملف وتحديد أفضل مطابقة تلقائياً حسب البيانات الفعلية (رقم البطاقة)..."):
+                pairs, unmatched = auto_pair_files_by_content(uploaded_files)
 
-                st.markdown(f"<h3 style='text-align: right;'>🔗 تم تكوين {len(pairs)} زوج مقارنة تلقائياً حسب تطابق البيانات الفعلية (مو أسماء الملفات)</h3>", unsafe_allow_html=True)
+            st.markdown(f"<h3 style='text-align: right;'>🔗 تم تكوين {len(pairs)} زوج مقارنة تلقائياً حسب تطابق البيانات الفعلية (مو أسماء الملفات)</h3>", unsafe_allow_html=True)
 
-                if unmatched_xlsx or unmatched_docx:
-                    with st.expander(f"⚠️ {len(unmatched_xlsx) + len(unmatched_docx)} ملف ما لقينا له أي تطابق بيانات مع ملف ثاني — تحقق منها يدوياً وربما تحتاج رفعها لوحدها"):
-                        for f in unmatched_xlsx + unmatched_docx:
-                            st.markdown(f"- {esc(f.name)}")
+            if unmatched:
+                with st.expander(f"⚠️ {len(unmatched)} ملف ما لقينا له أي تطابق بيانات مع ملف ثاني — تحقق منها يدوياً وربما تحتاج رفعها لوحدها"):
+                    for f in unmatched:
+                        st.markdown(f"- {esc(f.name)}")
 
-                for idx, (xf, df, overlap) in enumerate(pairs):
-                    with st.expander(f"📁 مقارنة {idx + 1}: {esc(xf.name)}  ↔  {esc(df.name)}  (تطابق {overlap} بطاقة)", expanded=(idx == 0)):
-                        run_comparison_for_pair(xf, df, comparison_mode, card_type_auto, card_type_param, card_choice_ui, matching_engine, pdf_template, swap_files=swap_files, key_suffix=f"_pair{idx}")
+            for idx, (fa, fb, overlap) in enumerate(pairs):
+                with st.expander(f"📁 مقارنة {idx + 1}: {esc(fa.name)}  ↔  {esc(fb.name)}  (تطابق {overlap} بطاقة)", expanded=(idx == 0)):
+                    run_comparison_for_pair(fa, fb, comparison_mode, card_type_auto, card_type_param, card_choice_ui, matching_engine, pdf_template, swap_files=swap_files, key_suffix=f"_pair{idx}")
 
 
 if __name__ == "__main__":
