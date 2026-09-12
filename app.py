@@ -1576,6 +1576,11 @@ _CLASSIC_PDF_CSS = """
   td.withheld { color: #CC0000; font-weight: bold; }
   td.status { font-weight: bold; }
   tr { page-break-inside: avoid; }
+  .subtitle { text-align: center; color: #154360; font-weight: 800; font-size: 18px; margin: 22px 0 12px; page-break-before: always; }
+  .stats-row { display: flex; gap: 12px; margin: 4px 0 16px; }
+  .stat-box { flex: 1; border: 1.5px solid #000; border-radius: 10px; padding: 10px 6px; text-align: center; background: #F7F7F7; }
+  .stat-box .num { display: block; font-size: 24px; font-weight: 800; color: #E30000; line-height: 1.2; }
+  .stat-box .lbl { font-size: 11.5px; font-weight: 600; color: #222; }
 """
 
 def _classic_status_html(referral_text):
@@ -1597,10 +1602,7 @@ def _classic_status_html(referral_text):
         spans.append(f'<span style="color:{color};">{esc(part)}</span>')
     return ' <span style="color:#000000;">|</span> '.join(spans)
 
-def create_classic_report_pdf(df_results_full, card_col_name, new_file_name):
-    """يبني تقرير PDF بجدول واحد شامل يحتوي كل السجلات (مضافة، منقولة،
-    معدّلة...) بدون أي كشوفات مستقلة إضافية لكل حالة — تصميم كلاسيكي
-    (عنوان أحمر، جدول أسود الحدود) مطابق لنموذج قديم كان معتمداً بالنظام."""
+def _classic_agent_name_and_suffix(new_file_name):
     agent_name = new_file_name.replace(".docx", "").replace(".xlsx", "")
     agent_name = re.sub(r'(FOOD|FLOUR)', '', agent_name, flags=re.IGNORECASE)
     agent_name = re.sub(r'[._-]?pdf[_-]?\d*$', '', agent_name, flags=re.IGNORECASE)
@@ -1611,9 +1613,33 @@ def create_classic_report_pdf(df_results_full, card_col_name, new_file_name):
         agency_suffix = " (غذائية)"
     elif "FLOUR" in new_file_name.upper():
         agency_suffix = " (طحين)"
+    return agent_name, agency_suffix
 
+def _classic_safe_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+def _classic_stats_html(rows, label):
+    """صف من المربعات الأنيقة (عدد العوائل + إجمالي الأفراد/المستحقة/
+    المحجوبين) يظهر أعلى كل جدول بالنموذج الأصلي — نفس فكرة stat-card
+    المستخدمة بالتصاميم الأخرى، بس بشكل بسيط أسود/أحمر يناسب الطابع
+    الكلاسيكي لهذا النموذج."""
+    total_people = sum(_classic_safe_int(r.get("الأفراد الكلية")) for r in rows)
+    total_eligible = sum(_classic_safe_int(r.get("الأفراد المستحقة")) for r in rows)
+    total_withheld = sum(_classic_safe_int(r.get("الأفراد المحجوبين")) for r in rows)
+    return f"""
+    <div class="stats-row">
+      <div class="stat-box"><span class="num">{len(rows)}</span><span class="lbl">عدد العوائل ({esc(label)})</span></div>
+      <div class="stat-box"><span class="num">{total_people}</span><span class="lbl">إجمالي الأفراد</span></div>
+      <div class="stat-box"><span class="num">{total_eligible}</span><span class="lbl">إجمالي المستحقة</span></div>
+      <div class="stat-box"><span class="num">{total_withheld}</span><span class="lbl">إجمالي المحجوبين</span></div>
+    </div>"""
+
+def _classic_table_html(rows, card_col_name):
     rows_html = ""
-    for r in df_results_full.to_dict("records"):
+    for r in rows:
         name = clean_to_triple_name(r.get("اسم رب الأسرة", ""))
         rows_html += f"""
         <tr>
@@ -1625,22 +1651,104 @@ def create_classic_report_pdf(df_results_full, card_col_name, new_file_name):
           <td class="withheld">{esc(r.get('الأفراد المحجوبين', ''))}</td>
           <td class="status">{_classic_status_html(r.get('الإحالة', ''))}</td>
         </tr>"""
+    return f"""
+    <table>
+      <thead><tr><th>ت</th><th>اسم المواطن</th><th>رقم البطاقة</th><th>الكلي</th><th>المستحق</th><th>المحجوب</th><th>الحالة</th></tr></thead>
+      <tbody>{rows_html}</tbody>
+    </table>"""
 
-    html = f"""<!doctype html>
+def create_classic_report_pdf(df_results_full, card_col_name, new_file_name):
+    """يبني تقرير PDF كلاسيكي (عنوان أحمر، جدول أسود الحدود) — بطلب صريح:
+    العوائل المضافة تُستبعد من الجدول الشامل وتصير بملف PDF مستقل خاص فيها،
+    والعوائل المنقولة تُستبعد أيضاً وتصير بجدول منفصل (قسم ثاني بنفس الملف
+    الرئيسي، بعد الجدول الشامل بصفحة جديدة) — فيبقى الجدول الشامل خاصاً
+    بالعوائل المعدّلة فقط (تغيير اسم/حجب/عدد أفراد...). يرجع
+    (main_pdf, added_pdf_or_None, agent_name)."""
+    agent_name, agency_suffix = _classic_agent_name_and_suffix(new_file_name)
+
+    all_rows = df_results_full.to_dict("records")
+    added_rows = [r for r in all_rows if r.get("meta_status") == "added"]
+    transferred_rows = [r for r in all_rows if r.get("meta_status") == "deleted"]
+    modified_rows = [r for r in all_rows if r.get("meta_status") not in ("added", "deleted")]
+
+    body_html = _classic_stats_html(modified_rows, "معدّلة") + _classic_table_html(modified_rows, card_col_name)
+    if transferred_rows:
+        body_html += (
+            '<div class="subtitle">العوائل المنقولة</div>'
+            + _classic_stats_html(transferred_rows, "منقولة")
+            + _classic_table_html(transferred_rows, card_col_name)
+        )
+
+    main_html = f"""<!doctype html>
 <html lang="ar" dir="rtl">
 <head><meta charset="utf-8"><title>تقرير متغيرات الوكيل</title>{_FONT_LINK}<style>{_CLASSIC_PDF_CSS}</style></head>
 <body>
   <div class="title">تقرير متغيرات الوكيل: {esc(agent_name)}{esc(agency_suffix)}</div>
-  <table>
-    <thead><tr><th>ت</th><th>اسم المواطن</th><th>رقم البطاقة</th><th>الكلي</th><th>المستحق</th><th>المحجوب</th><th>الحالة</th></tr></thead>
-    <tbody>{rows_html}</tbody>
-  </table>
+  {body_html}
 </body>
 </html>"""
-    pdf_bytes = WeasyHTML(string=html).write_pdf()
-    pdf_buffer = BytesIO(pdf_bytes)
-    pdf_buffer.seek(0)
-    return pdf_buffer, agent_name
+    main_pdf_bytes = WeasyHTML(string=main_html).write_pdf()
+    main_pdf_buffer = BytesIO(main_pdf_bytes)
+    main_pdf_buffer.seek(0)
+
+    added_pdf_buffer = None
+    if added_rows:
+        added_html = f"""<!doctype html>
+<html lang="ar" dir="rtl">
+<head><meta charset="utf-8"><title>تقرير العوائل المضافة</title>{_FONT_LINK}<style>{_CLASSIC_PDF_CSS}</style></head>
+<body>
+  <div class="title">تقرير العوائل المضافة — الوكيل: {esc(agent_name)}{esc(agency_suffix)}</div>
+  {_classic_stats_html(added_rows, "مضافة")}
+  {_classic_table_html(added_rows, card_col_name)}
+</body>
+</html>"""
+        added_pdf_bytes = WeasyHTML(string=added_html).write_pdf()
+        added_pdf_buffer = BytesIO(added_pdf_bytes)
+        added_pdf_buffer.seek(0)
+
+    return main_pdf_buffer, added_pdf_buffer, agent_name
+
+
+def decide_old_new_files(file1, file2, swap_files=False):
+    """يحدد أي ملف يُعتمد قديم (سابق) وأي حديث، بنفس المنطق بالضبط اللي
+    تعتمده run_comparison_for_pair (قاعدة الامتداد الثابتة، وإلا تاريخ
+    محتوى أو حجم الملف) — كدالة مستقلة خفيفة (بدون استخراج كامل الجدول)
+    تُستخدم لعرض توقع القديم/الحديث بواجهة المستخدم قبل بدء المقارنة
+    فعلياً، وأيضاً داخل run_comparison_for_pair نفسها لتفادي ازدواج
+    المنطق. يرجع (file_old, file_new, old_name, new_name, note) حيث
+    note نص توضيحي (فارغ لو اعتُمدت قاعدة الامتداد الثابتة البسيطة)."""
+    ext1 = file1.name.split('.')[-1].lower()
+    ext2 = file2.name.split('.')[-1].lower()
+    note = ""
+
+    if {ext1, ext2} == {"xlsx", "docx"}:
+        # قاعدة ثابتة: عند رفع ملف إكسل وملف وورد معاً، يُعتمد الإكسل دائماً كالملف
+        # السابق (القديم) والوورد دائماً كالملف الحديث، بغض النظر عن التاريخ المستشعر
+        file_a_is_older = (ext1 == "xlsx")
+    else:
+        # نفس الامتداد بالملفين (كلاهما xlsx أو كلاهما docx) — قاعدة
+        # الامتداد الثابتة ما تنطبق هنا. نجرب أولاً تاريخ فعلي من محتوى
+        # الملف (docx فقط)، وإلا نعتمد على حجم الملف: الأكبر حجماً هو
+        # الأحدث (الكشف الأحدث عادة يحوي عوائل أكثر بمرور الوقت). ماكو
+        # وقت تعديل حقيقي متاح من المتصفح بواجهة الرفع (Streamlit ما
+        # يعرضه)، فالحجم أدق مؤشر متاح فعلياً بهذي الحالة تحديداً.
+        date1, date2 = extract_document_date(file1), extract_document_date(file2)
+        if date1 and date2:
+            file_a_is_older = (date1 < date2)
+            note = "🗓️ الملفين بنفس الصيغة — اعتمدنا تاريخ مكتوب داخل الملفين لتحديد الأحدث."
+        elif file1.size != file2.size:
+            file_a_is_older = (file1.size < file2.size)
+            note = "📏 الملفين بنفس الصيغة وبلا تاريخ واضح بالمحتوى — اعتمدنا حجم الملف (الأكبر = الأحدث) لتحديد الأقدم والأحدث."
+        else:
+            file_a_is_older = True
+            note = "⚠️ الملفين بنفس الصيغة ونفس الحجم بالضبط — ما قدرنا نميّز الأحدث تلقائياً، اعتمدنا أول ملف رفعته كـ'قديم'."
+
+    if swap_files: file_a_is_older = not file_a_is_older
+
+    if file_a_is_older:
+        return file1, file2, file1.name, file2.name, note
+    else:
+        return file2, file1, file2.name, file1.name, note
 
 
 def run_comparison_for_pair(file1, file2, comparison_mode, card_type_auto, card_type_param, card_choice_ui, matching_engine, pdf_template, swap_files=False, key_suffix=""):
@@ -1653,39 +1761,10 @@ def run_comparison_for_pair(file1, file2, comparison_mode, card_type_auto, card_
     ما يوقف معالجة بقية الأزواج بجلسة رفع متعددة."""
     with st.spinner('جاري التحليل وعزل الحالات تلقائياً...'):
         card_col_name = card_choice_ui if not card_type_auto else "رقم البطاقة القديم"
-        ext1 = file1.name.split('.')[-1].lower()
-        ext2 = file2.name.split('.')[-1].lower()
 
-        if {ext1, ext2} == {"xlsx", "docx"}:
-            # قاعدة ثابتة: عند رفع ملف إكسل وملف وورد معاً، يُعتمد الإكسل دائماً كالملف
-            # السابق (القديم) والوورد دائماً كالملف الحديث، بغض النظر عن التاريخ المستشعر
-            file_a_is_older = (ext1 == "xlsx")
-        else:
-            # نفس الامتداد بالملفين (كلاهما xlsx أو كلاهما docx) — قاعدة
-            # الامتداد الثابتة ما تنطبق هنا. نجرب أولاً تاريخ فعلي من محتوى
-            # الملف (docx فقط)، وإلا نعتمد على حجم الملف: الأكبر حجماً هو
-            # الأحدث (الكشف الأحدث عادة يحوي عوائل أكثر بمرور الوقت). ماكو
-            # وقت تعديل حقيقي متاح من المتصفح بواجهة الرفع (Streamlit ما
-            # يعرضه)، فالحجم أدق مؤشر متاح فعلياً بهذي الحالة تحديداً.
-            date1, date2 = extract_document_date(file1), extract_document_date(file2)
-            if date1 and date2:
-                file_a_is_older = (date1 < date2)
-                st.caption("🗓️ الملفين بنفس الصيغة — اعتمدنا تاريخ مكتوب داخل الملفين لتحديد الأحدث.")
-            elif file1.size != file2.size:
-                file_a_is_older = (file1.size < file2.size)
-                st.caption("📏 الملفين بنفس الصيغة وبلا تاريخ واضح بالمحتوى — اعتمدنا حجم الملف (الأكبر = الأحدث) لتحديد الأقدم والأحدث.")
-            else:
-                file_a_is_older = True
-                st.caption("⚠️ الملفين بنفس الصيغة ونفس الحجم بالضبط — ما قدرنا نميّز الأحدث تلقائياً، اعتمدنا أول ملف رفعته كـ'قديم'. راجع مربع 'عكس الملفين يدوياً' إذا كان الترتيب غلط.")
-
-        if swap_files: file_a_is_older = not file_a_is_older
-
-        if file_a_is_older:
-            file_old, file_new = file1, file2
-            old_name, new_name = file1.name, file2.name
-        else:
-            file_old, file_new = file2, file1
-            old_name, new_name = file2.name, file1.name
+        file_old, file_new, old_name, new_name, role_note = decide_old_new_files(file1, file2, swap_files=swap_files)
+        if role_note:
+            st.caption(role_note)
 
         st.markdown(f"<div class='date-badge'>الملف المعتمد كـ <span class='old'>السابق: ({esc(old_name)})</span> | الملف المعتمد كـ <span class='new'>الحديث: ({esc(new_name)})</span></div>", unsafe_allow_html=True)
 
@@ -1796,11 +1875,15 @@ def run_comparison_for_pair(file1, file2, comparison_mode, card_type_auto, card_
                 st.download_button(label="📊 تحميل تقرير الإحصاء Word", data=word_stats, file_name=f"احصائيات_{base_name}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", key=f"word_stats{key_suffix}")
 
             if pdf_template == "classic":
-                # النموذج الأصلي: جدول واحد شامل بكل التفاصيل، بدون أي
-                # كشوفات مستقلة إضافية لكل حالة (أُلغيت بطلب صريح).
-                classic_pdf, classic_agent_label = create_classic_report_pdf(df_results_full, card_col_name, new_name)
-                st.markdown("<h4 style='text-align: right;'>📜 النموذج الأصلي (تقرير شامل بجدول واحد)</h4>", unsafe_allow_html=True)
+                # النموذج الأصلي: الجدول الشامل الآن خاص بالعوائل المعدّلة
+                # فقط — العوائل المضافة استُبعدت وصارت بملف PDF مستقل خاص
+                # فيها، والمنقولة استُبعدت وصارت بجدول منفصل بنفس الملف
+                # الرئيسي (بطلب صريح).
+                classic_pdf, classic_added_pdf, classic_agent_label = create_classic_report_pdf(df_results_full, card_col_name, new_name)
+                st.markdown("<h4 style='text-align: right;'>📜 النموذج الأصلي (العوائل المعدّلة + قسم منفصل للمنقولة)</h4>", unsafe_allow_html=True)
                 st.download_button(label="📜 تحميل النموذج الأصلي (PDF)", data=classic_pdf, file_name=f"تقرير متغيرات الوكيل {classic_agent_label}.pdf", mime="application/pdf", key=f"pdf_classic{key_suffix}")
+                if classic_added_pdf:
+                    st.download_button(label="📜 تحميل تقرير العوائل المضافة (PDF مستقل)", data=classic_added_pdf, file_name=f"تقرير العوائل المضافة - الوكيل {classic_agent_label}.pdf", mime="application/pdf", key=f"pdf_classic_added{key_suffix}")
             else:
                 category_reports, agent_label = create_category_pdf_reports(df_results_full, card_col_name, new_name, template=pdf_template)
                 if category_reports:
@@ -1883,6 +1966,20 @@ def main():
     card_col_name = card_choice_ui if not card_type_auto else "رقم البطاقة القديم"
     swap_files = st.checkbox("🔄 **عكس الملفين يدوياً (القديم يصبح حديثاً والحديث قديماً)**")
     st.caption("ℹ️ عند رفع أكثر من زوج ملفات دفعة وحدة، هذا المربع لا ينطبق — كل زوج مقارنة ياخذ مربع عكس خاص فيه بعد المقارنة.")
+
+    # عرض توقّع القديم/الحديث قبل بدء المقارنة فعلياً (فقط لحالة ملفين
+    # اثنين — بحالة الأزواج المتعددة التحديد يصير بعد المقارنة لكل زوج
+    # لأن تكوين الأزواج نفسه يحتاج استخراج البيانات أولاً)، عشان المستخدم
+    # يشوف القرار المتوقع ويقلبه بمربع العكس أعلاه قبل لا يضغط الزر، مو
+    # بعد ما يشتغل الحساب.
+    if uploaded_files and len(uploaded_files) == 2:
+        predicted_old, predicted_new, predicted_old_name, predicted_new_name, predict_note = decide_old_new_files(
+            uploaded_files[0], uploaded_files[1], swap_files=swap_files
+        )
+        st.info(f"🕓 سيُعتمد تلقائياً: **{esc(predicted_old_name)}** = الملف القديم (السابق) | **{esc(predicted_new_name)}** = الملف الحديث. علّم مربع 'عكس الملفين' أعلاه إذا كان هذا غلط.")
+        if predict_note:
+            st.caption(predict_note)
+
     pdf_template_ui = st.radio("🎨 نمط تصميم تقارير PDF:", ["الافتراضي (زجاجي)", "كانفا", "النموذج الأصلي (جدول واحد شامل)"], horizontal=True)
     if pdf_template_ui == "كانفا": pdf_template = "canva"
     elif pdf_template_ui == "النموذج الأصلي (جدول واحد شامل)": pdf_template = "classic"
