@@ -1882,6 +1882,7 @@ def main():
     card_type_param = "old" if card_choice_ui == "رقم البطاقة القديم" else "new"
     card_col_name = card_choice_ui if not card_type_auto else "رقم البطاقة القديم"
     swap_files = st.checkbox("🔄 **عكس الملفين يدوياً (القديم يصبح حديثاً والحديث قديماً)**")
+    st.caption("ℹ️ عند رفع أكثر من زوج ملفات دفعة وحدة، هذا المربع لا ينطبق — كل زوج مقارنة ياخذ مربع عكس خاص فيه بعد المقارنة.")
     pdf_template_ui = st.radio("🎨 نمط تصميم تقارير PDF:", ["الافتراضي (زجاجي)", "كانفا", "النموذج الأصلي (جدول واحد شامل)"], horizontal=True)
     if pdf_template_ui == "كانفا": pdf_template = "canva"
     elif pdf_template_ui == "النموذج الأصلي (جدول واحد شامل)": pdf_template = "classic"
@@ -1933,7 +1934,11 @@ def main():
 
             for idx, (fa, fb, overlap) in enumerate(pairs):
                 with st.expander(f"📁 مقارنة {idx + 1}: {esc(fa.name)}  ↔  {esc(fb.name)}  (تطابق {overlap} بطاقة)", expanded=(idx == 0)):
-                    run_comparison_for_pair(fa, fb, comparison_mode, card_type_auto, card_type_param, card_choice_ui, matching_engine, pdf_template, swap_files=swap_files, key_suffix=f"_pair{idx}")
+                    # عكس مستقل لكل زوج على حدة — بعض الأزواج قد يحتاج
+                    # عكس والبعض الآخر لا، فمربع واحد مشترك لكل الأزواج
+                    # كان يفرض نفس القرار على الجميع بالغلط.
+                    pair_swap = st.checkbox("🔄 عكس هذا الزوج تحديداً (القديم يصبح حديثاً والحديث قديماً)", key=f"swap_pair{idx}")
+                    run_comparison_for_pair(fa, fb, comparison_mode, card_type_auto, card_type_param, card_choice_ui, matching_engine, pdf_template, swap_files=pair_swap, key_suffix=f"_pair{idx}")
 
 
 if __name__ == "__main__":
