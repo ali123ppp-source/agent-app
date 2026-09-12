@@ -100,6 +100,46 @@ def test_extract_records_smart_normalizes_arabic_indic_digits_for_matching():
     assert set(latin_data.keys()) == set(indic_data.keys()) == {"123456"}
 
 
+def test_smart_fallback_is_per_file_not_shared(agent921_files):
+    """لو ملف واحد بس يفشل بالمحرك الذكي (عناوين مدمجة بخلية وحدة مثلاً)،
+    ما لازم هذا يسحب الملف الثاني (اللي ناجح تماماً بالذكي) للمحرك القديم
+    معاه — سيناريو فعلي شوهد يسبب تسرب رقم بطاقة لعمود عدد بالملف الثاني
+    السليم أصلاً. agent921_new.docx يشتغل صح بالذكي وبيه فساد معروف لو
+    قرأناه بالمحرك القديم (agent921_mismatched fixtures)، فنتأكد هنا إنه
+    ما ينزل للقديم أبداً طالما الذكي نجح فيه، بغض النظر عن حال الملف الثاني."""
+    old_file, new_file = agent921_files
+    import app as app_module
+    original_smart = app_module.extract_records_smart
+    original_clean = app_module.extract_clean_records
+    calls = {"smart_new": 0, "clean_new": 0}
+
+    def patched_smart(file_obj, card_type="old"):
+        if getattr(file_obj, "name", "") == old_file.name:
+            return {}, []  # يحاكي فشل الذكي بملف old فقط
+        calls["smart_new"] += 1
+        return original_smart(file_obj, card_type=card_type)
+
+    def patched_clean(file_obj, card_type="old"):
+        if getattr(file_obj, "name", "") == new_file.name:
+            calls["clean_new"] += 1
+        return original_clean(file_obj, card_type=card_type)
+
+    app_module.extract_records_smart = patched_smart
+    app_module.extract_clean_records = patched_clean
+    try:
+        new_data, new_dupes, new_used_fallback = app_module._extract_with_smart_fallback(new_file, "old")
+        old_data, old_dupes, old_used_fallback = app_module._extract_with_smart_fallback(old_file, "old")
+    finally:
+        app_module.extract_records_smart = original_smart
+        app_module.extract_clean_records = original_clean
+
+    assert new_used_fallback is False, "الملف الثاني ما لازم يهبط للمحرك القديم لأن الذكي نجح فيه"
+    assert calls["clean_new"] == 0, "extract_clean_records ما لازم يُستدعى أصلاً على الملف السليم"
+    assert calls["smart_new"] == 1
+    assert len(new_data) == 422  # نفس نتيجة المحرك الذكي المعروفة لهذا الملف
+    assert old_used_fallback is True  # الملف old فعلاً فشل بالذكي (محاكاة)
+
+
 def test_extract_records_smart_reports_duplicate_card_within_same_file():
     """بطاقتين بنفس الرقم بنفس الملف: أول ظهور يُعتمد، الثاني يُسجَّل
     كمكرر بدل ما يُكتب فوق الأول بصمت (فقدان عائلة كاملة من الحساب)."""

@@ -138,37 +138,51 @@ def extract_clean_records(file_obj, card_type="old"):
     if not records:
         for cells in rows_data:
             if not any(cells) or "المركز" in "".join(cells) or "الوكيل" in "".join(cells) or "اسم رب" in "".join(cells): continue
-            cells = [normalize_digits(c) if c.strip() and c.strip().isdigit() else c for c in cells]
-            name_idx = -1
-            max_len = 0
-            for i, c in enumerate(cells):
-                if any('\u0600' <= char <= '\u06FF' for char in c) and not any(char.isdigit() for char in c):
-                    if len(c) > max_len: max_len, name_idx = len(c), i
-            if name_idx == -1: continue
-            card_indices = [i for i, c in enumerate(cells) if c.isdigit() and len(c) >= 5]
-            if not card_indices: continue
-
-            old_card = cells[card_indices[0]]
-            new_card = cells[card_indices[-1]] if len(card_indices) > 1 else old_card
-            selected_card = old_card if card_type == "old" else new_card
-            alt_card = new_card if card_type == "old" else old_card
-            if alt_card == selected_card:
-                alt_card = ""
-            seq = "-"
-            for i in range(len(cells)-1, card_indices[-1], -1):
-                if cells[i].isdigit():
-                    seq = cells[i]
-                    break
-            digit_cells = [int(cells[i]) for i in range(name_idx) if cells[i].isdigit()]
-            if len(digit_cells) >= 3: withheld, eligible, total = digit_cells[0], digit_cells[1], digit_cells[2]
-            elif len(digit_cells) == 2: withheld, eligible, total = 0, digit_cells[0], digit_cells[1]
-            else: continue
+            parsed = _heuristic_parse_row(cells, card_type)
+            if parsed is None:
+                continue
+            selected_card = parsed["selected_card"]
             if selected_card in records:
-                duplicates.append((selected_card, cells[name_idx]))
+                duplicates.append((selected_card, parsed["name"]))
             else:
-                records[selected_card] = {"seq": seq, "name": cells[name_idx], "total": total, "eligible": eligible, "withheld": withheld, "alt_card": alt_card}
+                records[selected_card] = {k: v for k, v in parsed.items() if k != "selected_card"}
 
     return records, duplicates
+
+def _heuristic_parse_row(cells, card_type="old"):
+    """يفسّر صف بيانات خام (بلا أي اعتماد على نص عناوين) بترتيب ثابت شوهد
+    فعلياً بملفات حقيقية: [محجوب, مستحق, كلي, اسم, ...بطاقات بخانات ≥5،
+    تسلسل بآخر عمود رقمي]. يُستخدم كخط دفاع أخير من extract_clean_records
+    وأيضاً لبناء عيّنة معاينة لملفات عناوينها مدمجة بخلية واحدة (preview_columns_for_file)
+    حيث يفشل التعرف على عناوين منفصلة بالكامل. يرجع None لو الصف ما يطابق الشكل."""
+    cells = [normalize_digits(c) if c.strip() and c.strip().isdigit() else c for c in cells]
+    name_idx = -1
+    max_len = 0
+    for i, c in enumerate(cells):
+        if any('\u0600' <= char <= '\u06FF' for char in c) and not any(char.isdigit() for char in c):
+            if len(c) > max_len: max_len, name_idx = len(c), i
+    if name_idx == -1:
+        return None
+    card_indices = [i for i, c in enumerate(cells) if c.isdigit() and len(c) >= 5]
+    if not card_indices:
+        return None
+
+    old_card = cells[card_indices[0]]
+    new_card = cells[card_indices[-1]] if len(card_indices) > 1 else old_card
+    selected_card = old_card if card_type == "old" else new_card
+    alt_card = new_card if card_type == "old" else old_card
+    if alt_card == selected_card:
+        alt_card = ""
+    seq = "-"
+    for i in range(len(cells)-1, card_indices[-1], -1):
+        if cells[i].isdigit():
+            seq = cells[i]
+            break
+    digit_cells = [int(cells[i]) for i in range(name_idx) if cells[i].isdigit()]
+    if len(digit_cells) >= 3: withheld, eligible, total = digit_cells[0], digit_cells[1], digit_cells[2]
+    elif len(digit_cells) == 2: withheld, eligible, total = 0, digit_cells[0], digit_cells[1]
+    else: return None
+    return {"seq": seq, "name": cells[name_idx], "total": total, "eligible": eligible, "withheld": withheld, "alt_card": alt_card, "selected_card": selected_card}
 
 # -----------------------------------------------------------------------------
 # 2.5. محرك الاستخراج المخصص للنموذج الرابع المحدث (المستحق فقط)
@@ -349,7 +363,64 @@ def preview_columns_for_file(file_obj):
             sample_records.append(sample)
 
         return {"detected": detected, "sample_records": sample_records}
+
+    # لو ما نفع التعرف على عناوين منفصلة بأي جدول، نفحص هل عناوينه مدمجة
+    # كلها بخلية وحدة (صيغة ملفات قديمة شائعة — رأس الجدول نص طويل واحد
+    # بدل عمود لكل حقل) قبل ما نستسلم كلياً ونطلع تحذير "ما فيه جدول واضح"
+    # المضلل، بينما فعلياً فيه عناوين وبيانات سليمة بس بشكل مختلف.
+    for rows in tables_rows:
+        header_row_idx, labels = _detect_merged_header_row(rows)
+        if header_row_idx is None:
+            continue
+        detected = {_ROLE_LABELS_AR.get(role, role): text for role, text in labels}
+        sample_records = []
+        for row in rows[header_row_idx + 1:]:
+            if len(sample_records) >= 2:
+                break
+            parsed = _heuristic_parse_row(row, card_type="old")
+            if parsed is None:
+                continue
+            sample_records.append({
+                "اسم رب الأسرة": parsed["name"],
+                "رقم البطاقة": parsed["selected_card"],
+                "الأفراد الكلية": parsed["total"],
+                "الأفراد المستحقة": parsed["eligible"],
+                "الأفراد المحجوبين": parsed["withheld"],
+            })
+        return {"detected": detected, "sample_records": sample_records, "merged_header": True}
+
     return None
+
+def _split_merged_header_labels(cell_text):
+    """يفكّك خلية عناوين مدمجة (كل أسماء الأعمدة بنص واحد مفصول بفراغات
+    متعددة) لقائمة (دور، نص العنوان) — لغرض العرض فقط، مو لتحديد ترتيب
+    الأعمدة الفعلي بالبيانات (غير موثوق لأن ترتيب النص لا يطابق بالضرورة
+    ترتيب الأعمدة الحقيقي بجداول كهذي)."""
+    tokens = [t.strip() for t in re.split(r"\s{2,}", cell_text) if t.strip()]
+    labels = []
+    for t in tokens:
+        role = _smart_match_header_role(t)
+        if role:
+            labels.append((role, t))
+    return labels
+
+def _detect_merged_header_row(rows, max_scan=5):
+    """يفحص أول عدة صفوف بحثاً عن صف فيه خلية واحدة فقط غير فارغة تحمل كل
+    أسماء الأعمدة مدمجة سوية (بدل خلية منفصلة لكل عمود) — يرجع (رقم الصف،
+    قائمة الأدوار المكتشفة) لو لقى الشكل المطلوب (اسم + بطاقة + عدد على
+    الأقل)، وإلا (None, None)."""
+    for r_idx in range(min(max_scan, len(rows))):
+        non_empty = [c for c in rows[r_idx] if c and c.strip()]
+        if len(non_empty) != 1:
+            continue
+        labels = _split_merged_header_labels(non_empty[0])
+        roles_found = {role for role, _ in labels}
+        has_name = "name" in roles_found
+        has_card = any(k in roles_found for k in ("old_card", "new_card", "card_generic"))
+        has_amount = any(k in roles_found for k in ("total", "eligible", "withheld"))
+        if has_name and has_card and has_amount:
+            return r_idx, labels
+    return None, None
 
 def extract_records_smart(file_obj, card_type="old"):
     records = {}
@@ -460,6 +531,23 @@ def extract_matched_by_either_card(extract_fn, file_old, file_new):
     file_new.seek(0)
     unified_old, unified_new = merge_records_by_either_card(old_data, new_data)
     return unified_old, unified_new, "رقم البطاقة", old_duplicates, new_duplicates
+
+def _extract_with_smart_fallback(file_obj, card_type="old"):
+    """يجرب المحرك الذكي أولاً لهذا الملف تحديداً، ولا يلجأ للمحرك القديم
+    إلا لنفس الملف لو فشل هوة تحديداً — بدل ما يهبط الملفين مع بعض
+    للمحرك القديم لمجرد فشل واحد منهم بس. هذا يمنع سيناريو فعلي شوهد: ملف
+    عناوينه مدمجة بخلية وحدة يفشل بالمحرك الذكي فيسحب معه الملف الثاني
+    (اللي كان ناجح تماماً بالمحرك الذكي) للمحرك القديم، والمحرك القديم قد
+    يفسّر ترتيب أعمدة الملف الثاني غلط ويسرّب رقم بطاقة لعمود عدد."""
+    file_obj.seek(0)
+    data, duplicates = extract_records_smart(file_obj, card_type=card_type)
+    used_fallback = False
+    if not data:
+        file_obj.seek(0)
+        data, duplicates = extract_clean_records(file_obj, card_type=card_type)
+        used_fallback = True
+    file_obj.seek(0)
+    return data, duplicates, used_fallback
 
 # -----------------------------------------------------------------------------
 # 2.7. حارس سلامة البيانات: يرفض الاعتماد على سجلات فاسدة بدل تمريرها
@@ -1442,7 +1530,10 @@ def main():
                     st.warning("ما قدرنا نكتشف جدول بعناوين واضحة بهذا الملف — راح يعتمد على محرك احتياطي أقدم عند المقارنة.")
                     previews_ok.append(False)
                 else:
-                    st.caption("الأعمدة المكتشفة ← نص العنوان بالملف:")
+                    if preview.get("merged_header"):
+                        st.caption("🗂️ عناوين هذا الملف كلها بخلية واحدة (صيغة قديمة شائعة) — استخدمنا محرك متخصص بهذا الشكل وتم تفكيك العناوين والبيانات بنجاح:")
+                    else:
+                        st.caption("الأعمدة المكتشفة ← نص العنوان بالملف:")
                     st.dataframe(pd.DataFrame(list(preview["detected"].items()), columns=["الدور", "العنوان بالملف"]), hide_index=True, use_container_width=True)
                     if preview["sample_records"]:
                         st.caption("عيّنة (أول سجلين):")
@@ -1501,26 +1592,24 @@ def main():
                 else:
                     # المحرك الذكي بالتعرف على العناوين هو الأدق (يقرأ عناوين
                     # الجدول الفعلية بدل تخمين ترتيب الأعمدة)، فنجربه أولاً لكل
-                    # الأنماط. فقط إذا فشل بالكامل (ملف قديم الصياغة بفقرات
-                    # بدون جدول عناوين واضح) نرجع للمحرك القديم كخط دفاع أخير —
-                    # هذا يمنع تسرب أرقام بطاقات لأعمدة الأعداد (خلل شوهد فعلياً
-                    # مع المحرك القديم على بعض تنسيقات الجداول).
-                    if card_type_auto:
-                        old_data, new_data, card_col_name, old_duplicates, new_duplicates = extract_matched_by_either_card(extract_records_smart, file_old, file_new)
-                    else:
-                        old_data, old_duplicates = extract_records_smart(file_old, card_type=card_type_param)
-                        new_data, new_duplicates = extract_records_smart(file_new, card_type=card_type_param)
+                    # ملف بشكل مستقل تماماً — لو فشل بملف واحد بس (مثلاً عناوينه
+                    # مدمجة بخلية وحدة)، يرجع للمحرك القديم لهذا الملف تحديداً
+                    # فقط، ولا يسحب معه الملف الثاني اللي نجح فيه الذكي. هذا يمنع
+                    # سيناريو فعلي شوهد: فشل الذكي بملف واحد يهبط الملفين مع بعض
+                    # للمحرك القديم، والقديم يسرّب رقم بطاقة لعمود عدد بالملف
+                    # الثاني اللي كان سليماً تماماً بالذكي.
+                    fallback_card_type = "old" if card_type_auto else card_type_param
+                    old_data, old_duplicates, old_used_fallback = _extract_with_smart_fallback(file_old, fallback_card_type)
+                    new_data, new_duplicates, new_used_fallback = _extract_with_smart_fallback(file_new, fallback_card_type)
+                    used_fallback_engine = old_used_fallback or new_used_fallback
 
-                    if not old_data or not new_data:
-                        st.caption("⚠️ المحرك الذكي ما لقى جدول بعناوين واضحة بأحد الملفين، تم الرجوع للمحرك القديم.")
-                        if card_type_auto:
-                            old_data, new_data, card_col_name, old_duplicates, new_duplicates = extract_matched_by_either_card(extract_clean_records, file_old, file_new)
-                        else:
-                            old_data, old_duplicates = extract_clean_records(file_old, card_type=card_type_param)
-                            new_data, new_duplicates = extract_clean_records(file_new, card_type=card_type_param)
-                        used_fallback_engine = True
-                    else:
-                        used_fallback_engine = False
+                    if used_fallback_engine:
+                        fallback_files = [esc(n) for n, used in ((old_name, old_used_fallback), (new_name, new_used_fallback)) if used]
+                        st.caption(f"⚠️ المحرك الذكي ما لقى جدول بعناوين واضحة بـ: {'، '.join(fallback_files)} — استخدمنا المحرك الاحتياطي لهذا الملف تحديداً فقط.")
+
+                    if card_type_auto:
+                        old_data, new_data = merge_records_by_either_card(old_data, new_data)
+                    card_col_name = "رقم البطاقة" if card_type_auto else card_choice_ui
 
                     if not old_data or not new_data:
                         st.error("❌ ما قدرنا نستخرج أي سجل من ملف واحد أو أكثر (حتى بالمحرك الاحتياطي). تأكد إن الملفات تحتوي فعلاً جدول بيانات، مو ملف فارغ أو بصيغة غير مدعومة.")

@@ -46,6 +46,50 @@ def test_preview_columns_detects_expected_roles_docx(agent954_files):
     assert "الأفراد الكلية" in preview["detected"]
 
 
+def test_preview_columns_handles_merged_single_cell_header():
+    """بعض الملفات القديمة تكتب كل أسماء الأعمدة بخلية واحدة (بدل عمود
+    منفصل لكل عنوان)، مع عمود فارغ مخفي بين الاسم والبطاقات وترتيب أعمدة
+    فعلي (محجوب, مستحق, كلي, اسم, ..., بطاقات, تسلسل) لا يطابق ترتيب النص
+    بخلية العنوان. preview_columns_for_file لازم يتعرف على هذا الشكل
+    (merged_header=True) بدل ما يرجع None ويطلع تحذير "ما فيه جدول واضح"
+    المضلل، مع عيّنة صحيحة القيم مبنية عبر المحرك الاحتياطي الموثوق."""
+    import io
+    import openpyxl
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["نوع الوكالة          FOOD              رقم المركز                       625"])
+    ws.append(["رقم الوكالة         038526            اسم الوكيل                     علي حيدر حسين"])
+    ws.append(["ت                    رقم البطاقة                  رقم البطاقة القديم                                            اسم رب الاسرة                                       الافراد الكلية       الافراد المستحقة   الافراد المحجوبين"])
+    ws.append([])
+    # [محجوب, مستحق, كلي, اسم, فارغ, بطاقة_جديدة, بطاقة_قديمة, تسلسل]
+    ws.append([0, 8, 8, "وهاب جرد كاظم", None, 46774, 4454273, 1])
+    ws.append([0, 2, 2, "صادق رزاق جبار ترابي", None, 47899, 4351147, 2])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    buf.name = "merged_header.xlsx"
+
+    preview = app.preview_columns_for_file(buf)
+    assert preview is not None
+    assert preview.get("merged_header") is True
+    assert "اسم رب الأسرة" in preview["detected"]
+    assert len(preview["sample_records"]) == 2
+    assert preview["sample_records"][0]["اسم رب الأسرة"] == "وهاب جرد كاظم"
+    assert preview["sample_records"][0]["الأفراد الكلية"] == 8
+    assert preview["sample_records"][0]["الأفراد المستحقة"] == 8
+    assert preview["sample_records"][0]["الأفراد المحجوبين"] == 0
+
+    buf.seek(0)
+    data, dupes = app.extract_clean_records(buf, card_type="old")
+    assert len(data) == 2
+    assert dupes == []
+    rec = data["46774"]
+    assert rec["name"] == "وهاب جرد كاظم"
+    assert rec["total"] == 8 and rec["eligible"] == 8 and rec["withheld"] == 0
+    assert rec["alt_card"] == "4454273"
+
+
 def test_preview_columns_returns_none_for_file_with_no_clear_table():
     """ملف نصي عشوائي بدون أي جدول/عناوين معروفة — لازم يرجع None بدل ما
     يرمي استثناء أو يخمّن أعمدة عشوائية."""
