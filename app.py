@@ -731,9 +731,9 @@ def process_comparison(old_data, new_data, mode, card_col_name, matching_engine)
 
             base_row = {"التسلسل": old_v["seq"], "اسم رب الأسرة": old_v["name"], card_col_name: card,
                         "الأفراد الكلية": total_val, "الأفراد المستحقة": old_v["eligible"], 
-                        "الأفراد المحجوبين": withheld_val, "الإحالة": "عائلة محذوفة ❌", "meta_card": card}
+                        "الأفراد المحجوبين": withheld_val, "الإحالة": "عائلة منقولة ❌", "meta_card": card}
             results_type_1_reference.append({**base_row, "meta_status": "deleted"})
-            if mode == "النوع الثاني": results.append({**base_row, "الحالة": "محذوف", "meta_status": "deleted", "meta_card": card, "meta_sort": 1})
+            if mode == "النوع الثاني": results.append({**base_row, "الحالة": "منقول", "meta_status": "deleted", "meta_card": card, "meta_sort": 1})
             else: results.append({**base_row, "meta_status": "deleted", "meta_sort": 1})
                 
         elif card not in old_data and card in new_data:
@@ -945,7 +945,7 @@ def create_word_table_report(doc_df, title, mode, card_col_name, old_data, new_d
                         elif "حجب كلي" in part: part_color = RGBColor(128, 0, 0)
                         elif "حجب" in part or "نقصان مستحق" in part: part_color = RGBColor(255, 0, 0)
                         elif "مضافة" in part: part_color = RGBColor(0, 128, 0)
-                        elif "محذوفة" in part: part_color = RGBColor(255, 0, 0)
+                        elif "منقولة" in part: part_color = RGBColor(255, 0, 0)
                         
                         format_run(run, font_name="Calibri", size_pt=14, color_rgb=part_color, bold=True)
                         if p_idx < len(parts) - 1:
@@ -1012,7 +1012,7 @@ def create_word_table_report(doc_df, title, mode, card_col_name, old_data, new_d
         ("حالات تغيير اسم رب الأسرة", "تم تغيير الاسم"), ("حالات إضافة طفل", "إضافة طفل"),
         ("حالات حجب كلي", "حجب كلي"), ("حالات حجب نفر", "تم حجب"), ("حالات رفع الحجب", "تم رفع الحجب"),
         ("حالات زيادة مستحق", "زيادة مستحق"), ("حالات نقصان مستحق", "نقصان مستحق"),
-        ("العوائل المضافة", "عائلة مضافة"), ("العوائل المحذوفة", "عائلة محذوفة")
+        ("العوائل المضافة", "عائلة مضافة"), ("العوائل المنقولة", "عائلة منقولة")
     ]
     for case_title, keyword in cases_to_extract:
         if keyword == "تم حجب": matched_mask = doc_df['الإحالة'].str.contains("تم حجب", na=False) & ~doc_df['الإحالة'].str.contains("حجب كلي", na=False)
@@ -1072,7 +1072,7 @@ def create_word_stats_report(counters, filename_base):
     doc.add_paragraph().add_run("ثانياً: العوائل").bold = True
     stats_families = [
         ("تغيرت الكلية:", counters['total_fam']), ("تغيرت المستحقة:", counters['eligible_fam']),
-        ("تغيرت المحجوبين:", counters['withheld_fam']), ("عوائل مضافة:", counters['added_fam']), ("عوائل محذوفة:", counters['deleted_fam'])
+        ("تغيرت المحجوبين:", counters['withheld_fam']), ("عوائل مضافة:", counters['added_fam']), ("عوائل منقولة:", counters['deleted_fam'])
     ]
     for text, val in stats_families: doc.add_paragraph().add_run(f"{val} : {text}").alignment = WD_ALIGN_PARAGRAPH.RIGHT
     buffer = BytesIO()
@@ -1091,9 +1091,9 @@ CATEGORY_DEFS = [
      "subtitle": "العوائل الجديدة التي ظهرت في كشف الوكيل {agent} الحالي",
      "badge_label": "مضافة", "icon": "🆕", "accent": "#1E8449", "accent_soft": "#EAFAF1", "accent_dark": "#145A32",
      "show_referral": False, "match": lambda r: r.get("meta_status") == "added"},
-    {"key": "deleted", "title": "تقرير العوائل المحذوفة",
-     "subtitle": "العوائل الموجودة سابقاً والمفقودة من كشف الوكيل {agent} الحالي",
-     "badge_label": "محذوفة", "icon": "🗑", "accent": "#C0392B", "accent_soft": "#FDEDEC", "accent_dark": "#922B21",
+    {"key": "deleted", "title": "تقرير العوائل المنقولة",
+     "subtitle": "العوائل الموجودة سابقاً والمنقولة من كشف الوكيل {agent} الحالي",
+     "badge_label": "منقولة", "icon": "📤", "accent": "#C0392B", "accent_soft": "#FDEDEC", "accent_dark": "#922B21",
      "show_referral": False, "match": lambda r: r.get("meta_status") == "deleted"},
     {"key": "full_block", "title": "تقرير الحجب الكلي",
      "subtitle": "عوائل تم حجب كامل أفرادها في كشف الوكيل {agent} الحالي",
@@ -1180,6 +1180,7 @@ _PDF_CSS = """
   .c-num { font-weight: 800; color: #1B2631; }
   .c-eligible { color: #196F3D; }
   .c-withheld { color: #A93226; }
+  .th-blank, .c-blank { background: #fff !important; }
   .footer { margin-top: 18px; padding-top: 10px; border-top: 1px solid var(--line-color); display: flex; justify-content: space-between; font-size: 11px; color: var(--accent-dark); font-weight: 600; }
   .cover { text-align: center; padding-top: 55px; }
   .cover h1 { font-size: 33px; color: var(--accent-dark); margin-bottom: 16px; }
@@ -1244,6 +1245,7 @@ _PDF_CSS_CANVA = """
   .cv-num { font-weight: 800; color: #1B2631; }
   .cv-eligible { color: #196F3D; }
   .cv-withheld { color: #A93226; }
+  .th-blank, .cv-blank { background: #fff !important; }
   tbody tr { page-break-inside: avoid; }
 
   .cv-footer { margin-top: 16px; display: flex; justify-content: space-between; font-size: 10.5px; color: #85929E; font-weight: 600; }
@@ -1285,8 +1287,9 @@ def _category_section_html_canva(rows, cat, card_col_name, agent_label, with_bre
         rows_html += f"""
         <tr>
           <td class="cv-idx">{i}</td>
-          <td class="cv-name"><div class="name-text">{esc(r.get('اسم رب الأسرة', ''))}</div>{status_pill}</td>
           <td class="cv-mono">{esc(r.get(card_col_name, ''))}</td>
+          <td class="cv-name"><div class="name-text">{esc(r.get('اسم رب الأسرة', ''))}</div>{status_pill}</td>
+          <td class="cv-blank"></td>
           <td class="cv-num">{esc(r.get('الأفراد الكلية', ''))}</td>
           <td class="cv-num cv-eligible">{esc(r.get('الأفراد المستحقة', ''))}</td>
           <td class="cv-num cv-withheld">{esc(r.get('الأفراد المحجوبين', ''))}</td>
@@ -1311,7 +1314,7 @@ def _category_section_html_canva(rows, cat, card_col_name, agent_label, with_bre
         <div class="cv-table-wrap">
           <table>
             {_colgroup_html_canva()}
-            <thead><tr><th>ت</th><th>اسم رب الأسرة</th><th>{esc(card_col_name)}</th><th>الكلية</th><th>المستحقة</th><th>المحجوبين</th></tr></thead>
+            <thead><tr><th>ت</th><th>{esc(card_col_name)}</th><th>اسم رب الأسرة</th><th class="th-blank"></th><th>الكلية</th><th>المستحقة</th><th>المحجوبين</th></tr></thead>
             <tbody>{rows_html}</tbody>
           </table>
         </div>
@@ -1327,10 +1330,10 @@ def _build_category_pdf_html_canva(rows, cat, card_col_name, agent_label):
     return _wrap_pdf_document(cat["title"], section, css=_PDF_CSS_CANVA)
 
 def _colgroup_html(show_referral=None):
-    # عمود واحد فقط للاسم (بدون عمود إحالة منفصل — نص الحالة صار فقاعة
-    # صغيرة تحت الاسم بنفس الخلية) بعرض واسع يكفي الاسم الرباعي الكامل
-    # بسطر واحد متوازي بدون قص "...".
-    widths = [5, 44, 15, 12, 12, 12]
+    # الترتيب: ت، رقم البطاقة، الاسم، عمود فاصل فارغ (خلفية بيضاء دائماً)،
+    # ثم باقي البيانات (كلي/مستحق/محجوب). عمود الاسم واسع يكفي الاسم
+    # الرباعي الكامل + فقاعة الحالة تحته بسطر واحد متوازي بدون قص "...".
+    widths = [4, 14, 38, 5, 13, 13, 13]
     return "<colgroup>" + "".join(f'<col style="width:{w}%">' for w in widths) + "</colgroup>"
 
 def _category_section_html(rows, cat, card_col_name, agent_label, with_break=False):
@@ -1361,8 +1364,9 @@ def _category_section_html(rows, cat, card_col_name, agent_label, with_break=Fal
         rows_html += f"""
         <tr>
           <td class="c-idx">{i}</td>
-          <td class="c-name"><div class="name-text">{esc(r.get('اسم رب الأسرة', ''))}</div>{status_pill}</td>
           <td class="c-mono">{esc(r.get(card_col_name, ''))}</td>
+          <td class="c-name"><div class="name-text">{esc(r.get('اسم رب الأسرة', ''))}</div>{status_pill}</td>
+          <td class="c-blank"></td>
           <td class="c-num">{esc(r.get('الأفراد الكلية', ''))}</td>
           <td class="c-num c-eligible">{esc(r.get('الأفراد المستحقة', ''))}</td>
           <td class="c-num c-withheld">{esc(r.get('الأفراد المحجوبين', ''))}</td>
@@ -1388,7 +1392,7 @@ def _category_section_html(rows, cat, card_col_name, agent_label, with_break=Fal
       <div class="table-wrap">
         <table>
           {_colgroup_html()}
-          <thead><tr><th>ت</th><th>اسم رب الأسرة</th><th>{esc(card_col_name)}</th><th>الكلية</th><th>المستحقة</th><th>المحجوبين</th></tr></thead>
+          <thead><tr><th>ت</th><th>{esc(card_col_name)}</th><th>اسم رب الأسرة</th><th class="th-blank"></th><th>الكلية</th><th>المستحقة</th><th>المحجوبين</th></tr></thead>
           <tbody>{rows_html}</tbody>
         </table>
       </div>
@@ -1419,7 +1423,7 @@ def _matched_categories(df_results_full):
 
 def create_category_pdf_reports(df_results_full, card_col_name, new_file_name, template="glass"):
     """يبني تقرير PDF أنيق مستقل لكل حالة من حالات المتغيرات المكتشفة
-    (مضافة، محذوفة، حجب كلي/جزئي، رفع حجب، زيادة/نقصان أفراد أو مستحقين،
+    (مضافة، منقولة، حجب كلي/جزئي، رفع حجب، زيادة/نقصان أفراد أو مستحقين،
     تغيير اسم، تحديث عام)، ويُرجع فقط الحالات التي فعلاً لها سجلات ضمن
     نتيجة المقارنة الحالية. template: "glass" (الافتراضي) أو "canva"."""
     agent_label = _derive_agent_label(new_file_name)
