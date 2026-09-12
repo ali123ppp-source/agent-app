@@ -1563,14 +1563,14 @@ def create_combined_pdf_report(df_results_full, card_col_name, new_file_name, te
 # -----------------------------------------------------------------------------
 _CLASSIC_PDF_CSS = """
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; font-family: 'Tahoma', 'Arial', sans-serif; color: #000; background: #fff; }
+  html, body { margin: 0; padding: 0; font-family: 'Cairo', 'Tajawal', 'Arial', sans-serif; color: #000; background: #fff; }
   @page { size: A4 landscape; margin: 12mm 10mm;
-    @bottom-center { content: "الصفحة " counter(page); font-size: 11px; color: #000; } }
-  .title { text-align: center; color: #FF0000; font-weight: bold; font-size: 20px; margin: 4px 0 16px; }
+    @bottom-center { content: "الصفحة " counter(page); font-size: 11px; color: #000; font-family: 'Cairo', 'Tajawal', 'Arial', sans-serif; } }
+  .title { text-align: center; color: #E30000; font-weight: 800; font-size: 22px; margin: 4px 0 18px; letter-spacing: 0.3px; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { border: 1px solid #000; padding: 6px 5px; text-align: center; }
-  thead th { font-weight: bold; background: #fff; }
-  td.name { font-weight: bold; font-size: 14px; }
+  th, td { border: 1px solid #000; padding: 7px 6px; text-align: center; font-weight: 500; }
+  thead th { font-weight: 800; background: #fff; font-size: 13.5px; }
+  td.name { font-weight: 700; font-size: 14.5px; }
   td.total { color: #0033CC; font-weight: bold; }
   td.eligible { color: #008000; font-weight: bold; }
   td.withheld { color: #CC0000; font-weight: bold; }
@@ -1628,7 +1628,7 @@ def create_classic_report_pdf(df_results_full, card_col_name, new_file_name):
 
     html = f"""<!doctype html>
 <html lang="ar" dir="rtl">
-<head><meta charset="utf-8"><title>تقرير متغيرات الوكيل</title><style>{_CLASSIC_PDF_CSS}</style></head>
+<head><meta charset="utf-8"><title>تقرير متغيرات الوكيل</title>{_FONT_LINK}<style>{_CLASSIC_PDF_CSS}</style></head>
 <body>
   <div class="title">تقرير متغيرات الوكيل: {esc(agent_name)}{esc(agency_suffix)}</div>
   <table>
