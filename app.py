@@ -1554,6 +1554,94 @@ def create_combined_pdf_report(df_results_full, card_col_name, new_file_name, te
     pdf_buffer.seek(0)
     return pdf_buffer, agent_label
 
+# -----------------------------------------------------------------------------
+# 5.6. "النموذج الأصلي": إعادة بناء تصميم تقرير PDF كلاسيكي كان معتمداً
+# سابقاً (عنوان أحمر بسيط، جدول أسود الحدود، تلوين الأعداد والحالة بنفس
+# ألوان تقرير Word — RGBColor(0,51,204)/RGBColor(0,128,0)/RGBColor(204,0,0)
+# وقواعد format_run لعمود الإحالة). بطلب صريح: بدون أي كشوفات مستقلة لكل
+# حالة (كانت موجودة بالنموذج القديم) — جدول واحد شامل بكل التفاصيل يكفي.
+# -----------------------------------------------------------------------------
+_CLASSIC_PDF_CSS = """
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; font-family: 'Tahoma', 'Arial', sans-serif; color: #000; background: #fff; }
+  @page { size: A4 landscape; margin: 12mm 10mm;
+    @bottom-center { content: "الصفحة " counter(page); font-size: 11px; color: #000; } }
+  .title { text-align: center; color: #FF0000; font-weight: bold; font-size: 20px; margin: 4px 0 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { border: 1px solid #000; padding: 6px 5px; text-align: center; }
+  thead th { font-weight: bold; background: #fff; }
+  td.name { font-weight: bold; font-size: 14px; }
+  td.total { color: #0033CC; font-weight: bold; }
+  td.eligible { color: #008000; font-weight: bold; }
+  td.withheld { color: #CC0000; font-weight: bold; }
+  td.status { font-weight: bold; }
+  tr { page-break-inside: avoid; }
+"""
+
+def _classic_status_html(referral_text):
+    """يلوّن كل جزء من نص الإحالة حسب كلمته المفتاحية، بنفس قواعد التلوين
+    المستخدمة أصلاً بتقرير Word (format_run) — لتطابق بصري تام بين
+    المخرجين على نفس البيانات."""
+    if not referral_text:
+        return ""
+    parts = str(referral_text).split(" | ")
+    spans = []
+    for part in parts:
+        color = "#000000"
+        if "طفل" in part: color = "#0000FF"
+        elif "رفع" in part or "زيادة مستحق" in part: color = "#008000"
+        elif "حجب كلي" in part: color = "#800000"
+        elif "حجب" in part or "نقصان مستحق" in part: color = "#FF0000"
+        elif "مضافة" in part: color = "#008000"
+        elif "منقولة" in part: color = "#FF0000"
+        spans.append(f'<span style="color:{color};">{esc(part)}</span>')
+    return ' <span style="color:#000000;">|</span> '.join(spans)
+
+def create_classic_report_pdf(df_results_full, card_col_name, new_file_name):
+    """يبني تقرير PDF بجدول واحد شامل يحتوي كل السجلات (مضافة، منقولة،
+    معدّلة...) بدون أي كشوفات مستقلة إضافية لكل حالة — تصميم كلاسيكي
+    (عنوان أحمر، جدول أسود الحدود) مطابق لنموذج قديم كان معتمداً بالنظام."""
+    agent_name = new_file_name.replace(".docx", "").replace(".xlsx", "")
+    agent_name = re.sub(r'(FOOD|FLOUR)', '', agent_name, flags=re.IGNORECASE)
+    agent_name = re.sub(r'[._-]?pdf[_-]?\d*$', '', agent_name, flags=re.IGNORECASE)
+    agent_name = agent_name.strip("- ").strip()
+
+    agency_suffix = ""
+    if "FOOD" in new_file_name.upper():
+        agency_suffix = " (غذائية)"
+    elif "FLOUR" in new_file_name.upper():
+        agency_suffix = " (طحين)"
+
+    rows_html = ""
+    for r in df_results_full.to_dict("records"):
+        name = clean_to_triple_name(r.get("اسم رب الأسرة", ""))
+        rows_html += f"""
+        <tr>
+          <td>{esc(r.get('التسلسل', ''))}</td>
+          <td class="name">{esc(name)}</td>
+          <td>{esc(r.get(card_col_name, ''))}</td>
+          <td class="total">{esc(r.get('الأفراد الكلية', ''))}</td>
+          <td class="eligible">{esc(r.get('الأفراد المستحقة', ''))}</td>
+          <td class="withheld">{esc(r.get('الأفراد المحجوبين', ''))}</td>
+          <td class="status">{_classic_status_html(r.get('الإحالة', ''))}</td>
+        </tr>"""
+
+    html = f"""<!doctype html>
+<html lang="ar" dir="rtl">
+<head><meta charset="utf-8"><title>تقرير متغيرات الوكيل</title><style>{_CLASSIC_PDF_CSS}</style></head>
+<body>
+  <div class="title">تقرير متغيرات الوكيل: {esc(agent_name)}{esc(agency_suffix)}</div>
+  <table>
+    <thead><tr><th>ت</th><th>اسم المواطن</th><th>رقم البطاقة</th><th>الكلي</th><th>المستحق</th><th>المحجوب</th><th>الحالة</th></tr></thead>
+    <tbody>{rows_html}</tbody>
+  </table>
+</body>
+</html>"""
+    pdf_bytes = WeasyHTML(string=html).write_pdf()
+    pdf_buffer = BytesIO(pdf_bytes)
+    pdf_buffer.seek(0)
+    return pdf_buffer, agent_name
+
 
 def run_comparison_for_pair(file1, file2, comparison_mode, card_type_auto, card_type_param, card_choice_ui, matching_engine, pdf_template, swap_files=False, key_suffix=""):
     """يشغّل خط الأنابيب الكامل (تحديد الأدوار ← استخراج ← تحقق ← مقارنة ←
@@ -1707,18 +1795,25 @@ def run_comparison_for_pair(file1, file2, comparison_mode, card_type_auto, card_
                 word_stats = create_word_stats_report(counters, base_name)
                 st.download_button(label="📊 تحميل تقرير الإحصاء Word", data=word_stats, file_name=f"احصائيات_{base_name}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", key=f"word_stats{key_suffix}")
 
-            category_reports, agent_label = create_category_pdf_reports(df_results_full, card_col_name, new_name, template=pdf_template)
-            if category_reports:
-                st.markdown("<h4 style='text-align: right;'>📁 تقارير PDF منفصلة لكل حالة من حالات المتغيرات</h4>", unsafe_allow_html=True)
+            if pdf_template == "classic":
+                # النموذج الأصلي: جدول واحد شامل بكل التفاصيل، بدون أي
+                # كشوفات مستقلة إضافية لكل حالة (أُلغيت بطلب صريح).
+                classic_pdf, classic_agent_label = create_classic_report_pdf(df_results_full, card_col_name, new_name)
+                st.markdown("<h4 style='text-align: right;'>📜 النموذج الأصلي (تقرير شامل بجدول واحد)</h4>", unsafe_allow_html=True)
+                st.download_button(label="📜 تحميل النموذج الأصلي (PDF)", data=classic_pdf, file_name=f"تقرير متغيرات الوكيل {classic_agent_label}.pdf", mime="application/pdf", key=f"pdf_classic{key_suffix}")
+            else:
+                category_reports, agent_label = create_category_pdf_reports(df_results_full, card_col_name, new_name, template=pdf_template)
+                if category_reports:
+                    st.markdown("<h4 style='text-align: right;'>📁 تقارير PDF منفصلة لكل حالة من حالات المتغيرات</h4>", unsafe_allow_html=True)
 
-                combined_pdf, _ = create_combined_pdf_report(df_results_full, card_col_name, new_name, template=pdf_template)
-                if combined_pdf:
-                    st.download_button(label="📚 تحميل تقرير PDF شامل يجمع كل الحالات", data=combined_pdf, file_name=f"التقرير الشامل لـ الوكيل {agent_label}.pdf", mime="application/pdf", key=f"pdf_combined{key_suffix}")
+                    combined_pdf, _ = create_combined_pdf_report(df_results_full, card_col_name, new_name, template=pdf_template)
+                    if combined_pdf:
+                        st.download_button(label="📚 تحميل تقرير PDF شامل يجمع كل الحالات", data=combined_pdf, file_name=f"التقرير الشامل لـ الوكيل {agent_label}.pdf", mime="application/pdf", key=f"pdf_combined{key_suffix}")
 
-                pdf_cols = st.columns(2)
-                for idx, rep in enumerate(category_reports):
-                    with pdf_cols[idx % 2]:
-                        st.download_button(label=rep["button_label"], data=rep["pdf"], file_name=rep["file_name"], mime="application/pdf", key=f"pdf_{rep['key']}{key_suffix}")
+                    pdf_cols = st.columns(2)
+                    for idx, rep in enumerate(category_reports):
+                        with pdf_cols[idx % 2]:
+                            st.download_button(label=rep["button_label"], data=rep["pdf"], file_name=rep["file_name"], mime="application/pdf", key=f"pdf_{rep['key']}{key_suffix}")
 
         else:
             st.success("🎉 تطابق تام! لا توجد فروقات بين الملفين.")
@@ -1787,8 +1882,10 @@ def main():
     card_type_param = "old" if card_choice_ui == "رقم البطاقة القديم" else "new"
     card_col_name = card_choice_ui if not card_type_auto else "رقم البطاقة القديم"
     swap_files = st.checkbox("🔄 **عكس الملفين يدوياً (القديم يصبح حديثاً والحديث قديماً)**")
-    pdf_template_ui = st.radio("🎨 نمط تصميم تقارير PDF:", ["الافتراضي (زجاجي)", "كانفا"], horizontal=True)
-    pdf_template = "canva" if pdf_template_ui == "كانفا" else "glass"
+    pdf_template_ui = st.radio("🎨 نمط تصميم تقارير PDF:", ["الافتراضي (زجاجي)", "كانفا", "النموذج الأصلي (جدول واحد شامل)"], horizontal=True)
+    if pdf_template_ui == "كانفا": pdf_template = "canva"
+    elif pdf_template_ui == "النموذج الأصلي (جدول واحد شامل)": pdf_template = "classic"
+    else: pdf_template = "glass"
 
 
 

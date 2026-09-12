@@ -76,6 +76,28 @@ def test_canva_template_also_generates_valid_pdf(agent921_files):
     assert reports[0]["pdf"].getvalue()[:4] == b"%PDF"
 
 
+def test_classic_report_pdf_generates_single_table_without_error(agent921_files):
+    """النموذج الأصلي: جدول واحد شامل بكل السجلات، بدون أي كشوفات مستقلة
+    إضافية لكل حالة (أُلغيت بطلب صريح مقارنة بالنموذج القديم)."""
+    old_file, new_file = agent921_files
+    results, counters, card_col_name = _run_pipeline(old_file, new_file)
+    df = pd.DataFrame(results)
+    pdf_buf, agent_name = app.create_classic_report_pdf(df, card_col_name, "921-FOOD.docx")
+    pdf_bytes = pdf_buf.getvalue()
+    assert pdf_bytes[:4] == b"%PDF"
+    assert len(pdf_bytes) > 1000
+    assert agent_name == "921"
+
+
+def test_classic_status_html_colors_match_word_report_scheme():
+    assert 'color:#0000FF' in app._classic_status_html("إضافة طفل")
+    assert 'color:#008000' in app._classic_status_html("عائلة مضافة")
+    assert 'color:#FF0000' in app._classic_status_html("عائلة منقولة")
+    assert 'color:#800000' in app._classic_status_html("حجب كلي")
+    multi = app._classic_status_html("تم حجب 1 نفر | إضافة طفل")
+    assert 'color:#FF0000' in multi and 'color:#0000FF' in multi
+
+
 def test_category_section_html_escapes_malicious_name_field():
     """اسم عائلة فيه HTML/JS خام (مصدره ملف مستخدم، مو موثوق) ما يصير جزء
     فعلي من الصفحة — لازم يظهر كنص حرفي مهرّب، مو يكسر بنية الجدول أو
