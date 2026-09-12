@@ -1180,7 +1180,9 @@ _PDF_CSS = """
   .c-num { font-weight: 800; color: #1B2631; }
   .c-eligible { color: #196F3D; }
   .c-withheld { color: #A93226; }
-  .th-blank, .c-blank { background: #fff !important; }
+  .c-blank { background: #fff !important; }
+  .th-blank { white-space: normal !important; font-size: 8.5px !important; line-height: 1.2; }
+  .blank-chip { display: block; margin: 3px auto 0; width: 65%; height: 18px; border: 1.2px solid #5D6D7E; border-radius: 6px; background: #fff; }
   .footer { margin-top: 18px; padding-top: 10px; border-top: 1px solid var(--line-color); display: flex; justify-content: space-between; font-size: 11px; color: var(--accent-dark); font-weight: 600; }
   .cover { text-align: center; padding-top: 55px; }
   .cover h1 { font-size: 33px; color: var(--accent-dark); margin-bottom: 16px; }
@@ -1245,7 +1247,9 @@ _PDF_CSS_CANVA = """
   .cv-num { font-weight: 800; color: #1B2631; }
   .cv-eligible { color: #196F3D; }
   .cv-withheld { color: #A93226; }
-  .th-blank, .cv-blank { background: #fff !important; }
+  .cv-blank { background: #fff !important; }
+  .th-blank { white-space: normal !important; font-size: 8.5px !important; line-height: 1.2; }
+  .blank-chip { display: block; margin: 3px auto 0; width: 65%; height: 18px; border: 1.2px solid #5D6D7E; border-radius: 6px; background: #fff; }
   tbody tr { page-break-inside: avoid; }
 
   .cv-footer { margin-top: 16px; display: flex; justify-content: space-between; font-size: 10.5px; color: #85929E; font-weight: 600; }
@@ -1289,7 +1293,7 @@ def _category_section_html_canva(rows, cat, card_col_name, agent_label, with_bre
           <td class="cv-idx">{i}</td>
           <td class="cv-mono">{esc(r.get(card_col_name, ''))}</td>
           <td class="cv-name"><div class="name-text">{esc(r.get('اسم رب الأسرة', ''))}</div>{status_pill}</td>
-          <td class="cv-blank"></td>
+          <td class="cv-blank"><span class="blank-chip"></span></td>
           <td class="cv-num">{esc(r.get('الأفراد الكلية', ''))}</td>
           <td class="cv-num cv-eligible">{esc(r.get('الأفراد المستحقة', ''))}</td>
           <td class="cv-num cv-withheld">{esc(r.get('الأفراد المحجوبين', ''))}</td>
@@ -1314,7 +1318,7 @@ def _category_section_html_canva(rows, cat, card_col_name, agent_label, with_bre
         <div class="cv-table-wrap">
           <table>
             {_colgroup_html_canva()}
-            <thead><tr><th>ت</th><th>{esc(card_col_name)}</th><th>اسم رب الأسرة</th><th class="th-blank"></th><th>الكلية</th><th>المستحقة</th><th>المحجوبين</th></tr></thead>
+            <thead><tr><th>ت</th><th>{esc(card_col_name)}</th><th>اسم رب الأسرة</th><th class="th-blank">حقل فارغ</th><th>الكلية</th><th>المستحقة</th><th>المحجوبين</th></tr></thead>
             <tbody>{rows_html}</tbody>
           </table>
         </div>
@@ -1333,7 +1337,7 @@ def _colgroup_html(show_referral=None):
     # الترتيب: ت، رقم البطاقة، الاسم، عمود فاصل فارغ (خلفية بيضاء دائماً)،
     # ثم باقي البيانات (كلي/مستحق/محجوب). عمود الاسم واسع يكفي الاسم
     # الرباعي الكامل + فقاعة الحالة تحته بسطر واحد متوازي بدون قص "...".
-    widths = [4, 14, 38, 5, 13, 13, 13]
+    widths = [4, 14, 35, 8, 13, 13, 13]
     return "<colgroup>" + "".join(f'<col style="width:{w}%">' for w in widths) + "</colgroup>"
 
 def _category_section_html(rows, cat, card_col_name, agent_label, with_break=False):
@@ -1366,7 +1370,7 @@ def _category_section_html(rows, cat, card_col_name, agent_label, with_break=Fal
           <td class="c-idx">{i}</td>
           <td class="c-mono">{esc(r.get(card_col_name, ''))}</td>
           <td class="c-name"><div class="name-text">{esc(r.get('اسم رب الأسرة', ''))}</div>{status_pill}</td>
-          <td class="c-blank"></td>
+          <td class="c-blank"><span class="blank-chip"></span></td>
           <td class="c-num">{esc(r.get('الأفراد الكلية', ''))}</td>
           <td class="c-num c-eligible">{esc(r.get('الأفراد المستحقة', ''))}</td>
           <td class="c-num c-withheld">{esc(r.get('الأفراد المحجوبين', ''))}</td>
@@ -1392,7 +1396,7 @@ def _category_section_html(rows, cat, card_col_name, agent_label, with_break=Fal
       <div class="table-wrap">
         <table>
           {_colgroup_html()}
-          <thead><tr><th>ت</th><th>{esc(card_col_name)}</th><th>اسم رب الأسرة</th><th class="th-blank"></th><th>الكلية</th><th>المستحقة</th><th>المحجوبين</th></tr></thead>
+          <thead><tr><th>ت</th><th>{esc(card_col_name)}</th><th>اسم رب الأسرة</th><th class="th-blank">حقل فارغ</th><th>الكلية</th><th>المستحقة</th><th>المحجوبين</th></tr></thead>
           <tbody>{rows_html}</tbody>
         </table>
       </div>
