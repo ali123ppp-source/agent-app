@@ -1963,7 +1963,12 @@ def main():
         predicted_old, predicted_new, predicted_old_name, predicted_new_name, predict_note = decide_old_new_files(
             uploaded_files[0], uploaded_files[1], swap_files=swap_files
         )
-        st.info(f"🕓 سيُعتمد تلقائياً: **{esc(predicted_old_name)}** = الملف القديم (السابق) | **{esc(predicted_new_name)}** = الملف الحديث. علّم مربع 'عكس الملفين' أعلاه إذا كان هذا غلط.")
+        st.info(
+            f"🕓 سيُعتمد تلقائياً:\n\n"
+            f"**القديم (السابق) =** {esc(predicted_old_name)}\n\n"
+            f"**الحديث =** {esc(predicted_new_name)}\n\n"
+            f"علّم مربع 'عكس الملفين' أعلاه إذا كان هذا غلط."
+        )
         if predict_note:
             st.caption(predict_note)
 
