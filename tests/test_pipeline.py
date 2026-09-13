@@ -153,6 +153,29 @@ def test_category_section_html_escapes_malicious_name_field():
     assert "<b>" not in html_out  # agent_label نفسه المهرّب ما يفلت أيضاً
 
 
+def test_matched_categories_merges_all_but_added_and_deleted_without_duplication():
+    """المضافة والمنقولة تبقيان بجدولهما الخاص، وكل باقي الحالات (حجب،
+    زيادة أفراد، تغيير اسم...) تندمج بجدول واحد فقط — وأي عائلة تنطبق
+    عليها أكثر من حالة بنفس الوقت (هنا: حجب + زيادة أفراد معاً) تُذكر
+    مرة واحدة بس بالجدول المدموج، مو مرتين."""
+    df = pd.DataFrame([
+        {"اسم رب الأسرة": "احمد علي", "رقم البطاقة": "1111", "الأفراد الكلية": 3, "الأفراد المستحقة": 3, "الأفراد المحجوبين": 0, "الإحالة": "عائلة مضافة", "meta_status": "added"},
+        {"اسم رب الأسرة": "محمد كريم", "رقم البطاقة": "2222", "الأفراد الكلية": 4, "الأفراد المستحقة": 4, "الأفراد المحجوبين": 0, "الإحالة": "عائلة منقولة", "meta_status": "deleted"},
+        {"اسم رب الأسرة": "علي حسين", "رقم البطاقة": "3333", "الأفراد الكلية": 5, "الأفراد المستحقة": 4, "الأفراد المحجوبين": 1, "الإحالة": "تم حجب 1 نفر | إضافة طفل", "meta_status": "modified"},
+        {"اسم رب الأسرة": "حسين جبار", "رقم البطاقة": "4444", "الأفراد الكلية": 3, "الأفراد المستحقة": 3, "الأفراد المحجوبين": 0, "الإحالة": "تغيير الاسم من X الى Y", "meta_status": "modified"},
+    ])
+    matched = app._matched_categories(df)
+    by_key = {cat["key"]: rows for cat, rows in matched}
+
+    assert set(by_key.keys()) == {"added", "deleted", "other_changes"}
+    assert len(by_key["added"]) == 1
+    assert len(by_key["deleted"]) == 1
+    # علي (حجب+زيادة أفراد معاً) وحسين (تغيير اسم) = صفّان بالضبط، لا تكرار
+    assert len(by_key["other_changes"]) == 2
+    other_cards = {r["رقم البطاقة"] for r in by_key["other_changes"]}
+    assert other_cards == {"3333", "4444"}
+
+
 def test_extract_matched_by_either_card_raises_no_exception_on_empty_files():
     """ملفان بدون أي جدول بيانات: الاستخراج يرجع قواميس فاضية بهدوء (مو
     استثناء) — طبقة main() فوقه هي اللي تقرر توقف العرض للمستخدم بدل ما

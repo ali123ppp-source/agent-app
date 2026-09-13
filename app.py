@@ -1179,6 +1179,19 @@ CATEGORY_DEFS = [
      "show_referral": True, "match": lambda r: str(r.get("الإحالة") or "").strip() == "تحديث بيانات"},
 ]
 
+# جميع الحالات عدا "مضافة" و"منقولة" تُدمج بجدول واحد فقط بدل جدول منفصل
+# لكل حالة — لأن الصف الواحد قد ينطبق عليه أكثر من شرط بنفس الوقت (مثلاً
+# حجب + زيادة أفراد معاً)، فكان يتكرر بعدة تقارير منفصلة. بالدمج، أي عائلة
+# تُذكر مرة واحدة بس، ونص "الإحالة" الكامل تحتها (اللي أصلاً يجمع كل
+# حالاتها بـ " | ") يبيّن كل أنواع التحديث المنطبقة عليها سوية. التصميم
+# (ألوان/تخطيط/عرض أعمدة) يبقى بلا أي تغيير — الدمج بالمحتوى فقط.
+MERGED_OTHER_CATEGORY = {
+    "key": "other_changes", "title": "تقرير باقي حالات التحديث",
+    "subtitle": "عوائل طرأ عليها أي تحديث آخر (حجب/رفع حجب/تغيير عدد الأفراد أو المستحقين/تغيير اسم/تحديث عام) في كشف الوكيل {agent} الحالي",
+    "badge_label": "تحديثات أخرى", "icon": "🔄", "accent": "#5D6D7E", "accent_soft": "#F4F6F6", "accent_dark": "#2C3E50",
+    "show_referral": True, "match": lambda r: False,
+}
+
 def _hex_to_rgb(hex_color):
     h = hex_color.lstrip('#')
     return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
@@ -1463,12 +1476,21 @@ def _derive_agent_label(new_file_name):
     return agent_label.strip("- ").strip()
 
 def _matched_categories(df_results_full):
+    """يرجع قائمة (تعريف الحالة، صفوفها): "مضافة" و"منقولة" تبقيان
+    منعزلتين بجدولهما الخاص كما هي، وكل باقي الحالات تُدمج بجدول واحد
+    (MERGED_OTHER_CATEGORY) — أي عائلة تنطبق عليها أكثر من حالة بنفس
+    الوقت تُذكر مرة واحدة بس هناك، مو مرة بكل حالة كانت تنطبق عليها."""
     all_rows = df_results_full.to_dict("records")
     matched = []
-    for cat in CATEGORY_DEFS:
+    isolated_defs = [c for c in CATEGORY_DEFS if c["key"] in ("added", "deleted")]
+    merged_defs = [c for c in CATEGORY_DEFS if c["key"] not in ("added", "deleted")]
+    for cat in isolated_defs:
         rows = [r for r in all_rows if cat["match"](r)]
         if rows:
             matched.append((cat, rows))
+    other_rows = [r for r in all_rows if any(cat["match"](r) for cat in merged_defs)]
+    if other_rows:
+        matched.append((MERGED_OTHER_CATEGORY, other_rows))
     return matched
 
 def create_category_pdf_reports(df_results_full, card_col_name, new_file_name, template="glass"):
