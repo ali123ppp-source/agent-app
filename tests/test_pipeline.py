@@ -176,6 +176,41 @@ def test_process_comparison_ignores_whitespace_only_name_differences():
     assert "تغيير الاسم" in by_card["2222"]["الإحالة"]
 
 
+def test_is_minor_typo_difference_detects_single_character_edits():
+    """أمثلة حقيقية من بيانات وكيل فعلي: فرق حرف وحيد (حذف/استبدال/تبديل
+    حرفين متجاورين) يُعتبر نفس الاسم، وفرق أكبر (اسم مختلف كلياً، أو فرق
+    حقيقي بكلمة كاملة) ما يُعتبر."""
+    assert app._is_minor_typo_difference("شذى عبد الساده كصاد الفتلاوي", "شذى عبد السادة كصاد الفتلاوي")  # ه↔ة
+    assert app._is_minor_typo_difference("عبدالله لبيد روؤف الغلاي", "عبدالله لبيد رؤوف الغلاي")  # تبديل حرفين متجاورين
+    assert app._is_minor_typo_difference("صفاء وهبي امين", "صفاء وهي امين")  # حرف محذوف
+    assert app._is_minor_typo_difference("صابربن ضياء صالح", "صابرين ضياء صالح")  # استبدال حرف
+    assert app._is_minor_typo_difference("ميثم شبل عاصي الكعبي", "ميثم شبل عامي الكعبي")  # استبدال حرف
+    assert not app._is_minor_typo_difference("معتز كاظم علي", "محمد خلف خشان الحبيب")  # اسم مختلف كلياً
+    assert not app._is_minor_typo_difference("منال مجيد طاهر البو بياض", "منال مجيد طاهر ابو رياض")  # فرق حقيقي بكلمة
+
+
+def test_process_comparison_ignores_single_letter_typo_and_missing_space_in_name():
+    """نفس أمثلة الاختبار السابق لكن من خلال process_comparison كاملة —
+    الاسم اللي يختلف بحرف وحيد بس (أو مسافة ناقصة صنعت كلمة إضافية) ما
+    يُحتسب تغيير اسم، حتى لو التطبيع البسيط (بدون قص لثلاث كلمات) هو اللي
+    يكتشفه صح."""
+    old_data = {
+        "1111": {"seq": "1", "name": "محمدعلي عبدالواحد عاتي", "total": 5, "eligible": 5, "withheld": 0, "alt_card": ""},
+        "2222": {"seq": "2", "name": "معتز كاظم علي", "total": 4, "eligible": 4, "withheld": 0, "alt_card": ""},
+    }
+    new_data = {
+        "1111": {"seq": "1", "name": "محمد علي عبدالواحد عاتي", "total": 5, "eligible": 5, "withheld": 0, "alt_card": ""},
+        "2222": {"seq": "2", "name": "محمد خلف خشان الحبيب", "total": 4, "eligible": 4, "withheld": 0, "alt_card": ""},
+    }
+    results, _, _ = app.process_comparison(old_data, new_data, "النوع الأول", "رقم البطاقة", "المحرك القياسي")
+    by_card = {r["رقم البطاقة"]: r for r in results}
+
+    # 1111: نفس الاسم فعلياً، بس مسافة ناقصة ولّدت كلمة إضافية بملف — ما لازم "تغيير الاسم"
+    assert "1111" not in by_card or "تغيير الاسم" not in by_card["1111"]["الإحالة"]
+    # 2222: اسم مختلف كلياً — لازم "تغيير الاسم"
+    assert "تغيير الاسم" in by_card["2222"]["الإحالة"]
+
+
 def test_matched_categories_merges_all_but_added_and_deleted_without_duplication():
     """المضافة والمنقولة تبقيان بجدولهما الخاص، وكل باقي الحالات (حجب،
     زيادة أفراد، تغيير اسم...) تندمج بجدول واحد فقط — وأي عائلة تنطبق

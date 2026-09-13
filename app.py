@@ -699,12 +699,18 @@ def process_comparison(old_data, new_data, mode, card_col_name, matching_engine)
                 referral_text = " | ".join(notes) if notes else ""
             else:
                 is_changed = d_tot != 0 or d_elig != 0 or d_with != 0
-                # نقارن الاسم بعد تطبيع المسافات (نفس دالة clean_to_triple_name
-                # المستخدمة أصلاً بعرض التقارير) بدل المقارنة الحرفية الخام —
-                # ملفات الإكسل الحكومية غالباً فيها مسافات مزدوجة/غير منتظمة
-                # بين كلمات الاسم بينما ملف الوورد يطلع بمسافة وحدة، فالمقارنة
-                # الخام كانت تعتبر كل هذا "تغيير اسم" مزيّف حتى لو الاسم نفسه.
-                if clean_to_triple_name(old_v["name"]) != clean_to_triple_name(new_v["name"]):
+                # نقارن الاسم بعد تطبيع المسافات فقط (بدون قص لثلاث كلمات —
+                # القص يزيح محاذاة الكلمات لو فرق المسافة نفسه ولّد كلمة
+                # زيادة، ويكسر فحص الفرق البسيط تحت) — ملفات الإكسل
+                # الحكومية غالباً فيها مسافات مزدوجة/غير منتظمة بين كلمات
+                # الاسم بينما ملف الوورد يطلع بمسافة وحدة. كذلك نتجاهل فرق
+                # إملائي بحرف واحد بس (حذف/إضافة/استبدال/تبديل حرفين
+                # متجاورين مكانهما، مثل "الساده"/"السادة" أو "روؤف"/"رؤوف")
+                # لأنه بالغالب تصحيح إملائي، مو تغيير اسم فعلي — بس فرق
+                # أكبر من هذا (اسم مختلف كلياً) يبقى يُحتسب.
+                old_name_clean = " ".join(str(old_v["name"]).split())
+                new_name_clean = " ".join(str(new_v["name"]).split())
+                if old_name_clean != new_name_clean and not _is_minor_typo_difference(old_name_clean, new_name_clean):
                     notes.append(f"تم تغيير الاسم / السابق / {old_v['name']}")
                     is_changed = True
                 if new_v["withheld"] == new_v["total"] and new_v["total"] > 0 and d_with > 0:
@@ -828,6 +834,28 @@ def clean_to_triple_name(name_str):
     if not name_str or pd.isna(name_str): return ""
     words = str(name_str).strip().split()
     return " ".join(words[:3])
+
+def _is_minor_typo_difference(name_a, name_b, max_distance=1):
+    """يتحقق هل الفرق بين اسمين لا يتجاوز خطأ إملائي بحرف واحد (حذف/إضافة/
+    استبدال حرف، أو تبديل حرفين متجاورين مكانهما — مثل "روؤف" و"رؤوف") —
+    بمسافة Damerau-Levenshtein. لا يُعتبر "نفس الاسم" أي فرق أكبر من هذا
+    (مثل اسم مختلف كلياً)."""
+    a, b = str(name_a), str(name_b)
+    if a == b:
+        return True
+    len_a, len_b = len(a), len(b)
+    if abs(len_a - len_b) > max_distance:
+        return False
+    prev2, prev1 = None, list(range(len_b + 1))
+    for i in range(1, len_a + 1):
+        curr = [i] + [0] * len_b
+        for j in range(1, len_b + 1):
+            cost = 0 if a[i - 1] == b[j - 1] else 1
+            curr[j] = min(prev1[j] + 1, curr[j - 1] + 1, prev1[j - 1] + cost)
+            if i > 1 and j > 1 and a[i - 1] == b[j - 2] and a[i - 2] == b[j - 1]:
+                curr[j] = min(curr[j], prev2[j - 2] + 1)
+        prev2, prev1 = prev1, curr
+    return prev1[len_b] <= max_distance
 
 def format_run(run, font_name="Microsoft Sans Serif", size_pt=14, color_rgb=None, bold=False):
     run.font.name = font_name
