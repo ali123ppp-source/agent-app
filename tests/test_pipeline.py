@@ -153,6 +153,29 @@ def test_category_section_html_escapes_malicious_name_field():
     assert "<b>" not in html_out  # agent_label نفسه المهرّب ما يفلت أيضاً
 
 
+def test_process_comparison_ignores_whitespace_only_name_differences():
+    """اسم نفسه بالضبط لكن بمسافات مزدوجة/غير منتظمة بملف عن الثاني
+    (شائع جداً بين إكسل ووورد) ما لازم يُحتسب "تغيير اسم" مزيّف — بس فرق
+    حقيقي بالكلمات لازم يُحتسب فعلاً."""
+    old_data = {
+        "1111": {"seq": "1", "name": "احمد  خورشيد  كاظم", "total": 4, "eligible": 4, "withheld": 0, "alt_card": ""},
+        "2222": {"seq": "2", "name": "علي حسن محمد", "total": 3, "eligible": 3, "withheld": 0, "alt_card": ""},
+    }
+    new_data = {
+        "1111": {"seq": "1", "name": "احمد خورشيد كاظم", "total": 5, "eligible": 5, "withheld": 0, "alt_card": ""},
+        "2222": {"seq": "2", "name": "علي حسن كريم", "total": 3, "eligible": 3, "withheld": 0, "alt_card": ""},
+    }
+    results, _, _ = app.process_comparison(old_data, new_data, "النوع الأول", "رقم البطاقة", "المحرك القياسي")
+    by_card = {r["رقم البطاقة"]: r for r in results}
+
+    # 1111: نفس الاسم فعلياً (فرق مسافات بس) + زيادة أفراد — ما لازم يظهر "تغيير الاسم"
+    assert "تغيير الاسم" not in by_card["1111"]["الإحالة"]
+    assert "إضافة طفل" in by_card["1111"]["الإحالة"]
+
+    # 2222: تغيير حقيقي بالكلمة الأخيرة (محمد → كريم) — لازم يظهر "تغيير الاسم"
+    assert "تغيير الاسم" in by_card["2222"]["الإحالة"]
+
+
 def test_matched_categories_merges_all_but_added_and_deleted_without_duplication():
     """المضافة والمنقولة تبقيان بجدولهما الخاص، وكل باقي الحالات (حجب،
     زيادة أفراد، تغيير اسم...) تندمج بجدول واحد فقط — وأي عائلة تنطبق

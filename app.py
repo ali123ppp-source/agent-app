@@ -699,7 +699,12 @@ def process_comparison(old_data, new_data, mode, card_col_name, matching_engine)
                 referral_text = " | ".join(notes) if notes else ""
             else:
                 is_changed = d_tot != 0 or d_elig != 0 or d_with != 0
-                if old_v["name"] != new_v["name"]:
+                # نقارن الاسم بعد تطبيع المسافات (نفس دالة clean_to_triple_name
+                # المستخدمة أصلاً بعرض التقارير) بدل المقارنة الحرفية الخام —
+                # ملفات الإكسل الحكومية غالباً فيها مسافات مزدوجة/غير منتظمة
+                # بين كلمات الاسم بينما ملف الوورد يطلع بمسافة وحدة، فالمقارنة
+                # الخام كانت تعتبر كل هذا "تغيير اسم" مزيّف حتى لو الاسم نفسه.
+                if clean_to_triple_name(old_v["name"]) != clean_to_triple_name(new_v["name"]):
                     notes.append(f"تم تغيير الاسم / السابق / {old_v['name']}")
                     is_changed = True
                 if new_v["withheld"] == new_v["total"] and new_v["total"] > 0 and d_with > 0:
