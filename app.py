@@ -1233,6 +1233,36 @@ def _rgba(hex_color, alpha):
     r, g, b = _hex_to_rgb(hex_color)
     return f"rgba({r},{g},{b},{alpha})"
 
+def _status_part_color(part):
+    """يرجع (accent, accent_soft, accent_dark) للون المناسب لجزء نص حالة
+    واحد (بعد تقسيم نص الإحالة على " | ")، بالاعتماد على نفس تعريفات
+    CATEGORY_DEFS (حجب كلي/زيادة حجب/رفع حجب/زيادة أفراد/... الخ) — أو
+    لون رمادي افتراضي لو ما انطبقت عليه ولا حالة معروفة."""
+    fake_row = {"الإحالة": part}
+    for cat in CATEGORY_DEFS:
+        if cat["key"] in ("added", "deleted"):
+            continue
+        if cat["match"](fake_row):
+            return cat["accent"], cat["accent_soft"], cat["accent_dark"]
+    return "#566573", "#F4F6F6", "#2C3E50"
+
+def _status_pills_html(referral_text):
+    """يبني فقاعة (pill) صغيرة منفصلة بلون خفيف مميز لكل جزء من نص
+    الإحالة (لو الصف فيه أكثر من حالة بنفس الوقت، كل حالة تاخذ فقاعتها
+    ولونها الخاص بدل فقاعة وحدة رمادية موحّدة لكل شي)."""
+    if not referral_text:
+        return ""
+    parts = [p.strip() for p in str(referral_text).split(" | ") if p.strip()]
+    if not parts:
+        return ""
+    spans = "".join(
+        f'<span class="status-pill" style="background:{soft}; border-color:{_rgba(accent, 0.45)}; color:{dark};">{esc(part)}</span>'
+        for part, accent, soft, dark in (
+            (p, *_status_part_color(p)) for p in parts
+        )
+    )
+    return f'<div class="status-pills">{spans}</div>'
+
 _FONT_LINK = """<link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">"""
@@ -1267,7 +1297,8 @@ _PDF_CSS = """
   .c-idx { color: var(--accent-dark); font-weight: 700; }
   .c-name { text-align: right; font-weight: 700; color: #1B2631; font-size: 12px; white-space: normal; overflow: visible; text-overflow: clip; }
   .c-name .name-text { line-height: 1.3; }
-  .status-pill { display: inline-block; margin-top: 4px; padding: 2px 11px; border-radius: 999px; background: var(--pill-bg); border: 1px solid var(--pill-border); color: var(--accent-dark); font-size: 9px; font-weight: 600; line-height: 1.6; white-space: normal; }
+  .status-pills { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 3px; margin-top: 4px; }
+  .status-pill { display: inline-block; padding: 2px 11px; border-radius: 999px; background: var(--pill-bg); border: 1px solid var(--pill-border); color: var(--accent-dark); font-size: 9px; font-weight: 600; line-height: 1.6; white-space: normal; }
   .c-mono { font-family: 'Consolas', monospace; direction: ltr; color: var(--accent-dark); font-weight: 700; font-size: 16px; }
   .c-num { font-weight: 800; color: #1B2631; font-size: 15px; }
   .c-eligible { color: #196F3D; }
@@ -1334,7 +1365,8 @@ _PDF_CSS_CANVA = """
   .cv-idx { color: var(--accent-dark); font-weight: 700; }
   .cv-name { text-align: right; font-weight: 700; color: #1B2631; font-size: 12px; white-space: normal; overflow: visible; text-overflow: clip; }
   .cv-name .name-text { line-height: 1.3; }
-  .status-pill { display: inline-block; margin-top: 4px; padding: 2px 11px; border-radius: 999px; background: var(--pill-bg); border: 1px solid var(--pill-border); color: var(--accent-dark); font-size: 9px; font-weight: 600; line-height: 1.6; white-space: normal; }
+  .status-pills { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 3px; margin-top: 4px; }
+  .status-pill { display: inline-block; padding: 2px 11px; border-radius: 999px; background: var(--pill-bg); border: 1px solid var(--pill-border); color: var(--accent-dark); font-size: 9px; font-weight: 600; line-height: 1.6; white-space: normal; }
   .cv-mono { font-family: 'Consolas', monospace; direction: ltr; color: var(--accent-dark); font-weight: 700; font-size: 16px; }
   .cv-num { font-weight: 800; color: #1B2631; font-size: 15px; }
   .cv-eligible { color: #196F3D; }
@@ -1378,8 +1410,7 @@ def _category_section_html_canva(rows, cat, card_col_name, agent_label, with_bre
 
     rows_html = ""
     for i, r in enumerate(rows, start=1):
-        referral_text = esc(r.get('الإحالة', '')) if show_referral else ""
-        status_pill = f"<div class='status-pill'>{referral_text}</div>" if referral_text else ""
+        status_pill = _status_pills_html(r.get('الإحالة', '')) if show_referral else ""
         rows_html += f"""
         <tr>
           <td class="cv-idx">{i}</td>
@@ -1429,7 +1460,10 @@ def _colgroup_html(show_referral=None):
     # الترتيب: ت، رقم البطاقة، الاسم، عمود فاصل فارغ (خلفية بيضاء دائماً)،
     # ثم باقي البيانات (كلي/مستحق/محجوب). عمود الاسم واسع يكفي الاسم
     # الرباعي الكامل + فقاعة الحالة تحته بسطر واحد متوازي بدون قص "...".
-    widths = [4, 14, 33, 10, 13, 13, 13]
+    # عمود "ت" مُوسَّع شوي (كان 4%) عشان يستوعب أرقام تسلسل 3 خانات
+    # بدون ما يُقص بعلامة "..." بالجداول الطويلة (متل الجدول المدموج
+    # اللي يجمع كل الحالات وياخذ تسلسل أطول من أي حالة منفردة سابقاً).
+    widths = [6, 14, 31, 10, 13, 13, 13]
     return "<colgroup>" + "".join(f'<col style="width:{w}%">' for w in widths) + "</colgroup>"
 
 def _category_section_html(rows, cat, card_col_name, agent_label, with_break=False):
@@ -1455,8 +1489,7 @@ def _category_section_html(rows, cat, card_col_name, agent_label, with_break=Fal
 
     rows_html = ""
     for i, r in enumerate(rows, start=1):
-        referral_text = esc(r.get('الإحالة', '')) if show_referral else ""
-        status_pill = f"<div class='status-pill'>{referral_text}</div>" if referral_text else ""
+        status_pill = _status_pills_html(r.get('الإحالة', '')) if show_referral else ""
         rows_html += f"""
         <tr>
           <td class="c-idx">{i}</td>

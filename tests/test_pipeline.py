@@ -211,6 +211,51 @@ def test_process_comparison_ignores_single_letter_typo_and_missing_space_in_name
     assert "تغيير الاسم" in by_card["2222"]["الإحالة"]
 
 
+def test_status_pills_html_gives_each_status_its_own_distinct_color():
+    """صف فيه أكثر من حالة بنفس الوقت (حجب + إضافة طفل) لازم ياخذ فقاعتين
+    منفصلتين بلونين مختلفين، مو فقاعة وحدة بلون رمادي موحّد للكل."""
+    html = app._status_pills_html("تم حجب 2 نفر | إضافة طفل")
+    assert html.count('class="status-pill"') == 2
+    assert "تم حجب 2 نفر" in html and "إضافة طفل" in html
+    # لونين مختلفين فعلياً (مو نفس الخلفية مكررة)
+    block_accent, block_soft, block_dark = app._status_part_color("تم حجب 2 نفر")
+    add_accent, add_soft, add_dark = app._status_part_color("إضافة طفل")
+    assert block_soft != add_soft
+
+    empty = app._status_pills_html("")
+    assert empty == ""
+
+
+def test_status_part_color_distinguishes_known_categories():
+    """كل نوع حالة معروف (حجب كلي/رفع حجب/زيادة أفراد/تغيير اسم...) ياخذ
+    لون accent_soft مختلف عن البقية، وحالة غير معروفة تاخذ اللون الرمادي
+    الافتراضي."""
+    colors = {
+        label: app._status_part_color(text)[1]
+        for label, text in [
+            ("full_block", "حجب كلي"),
+            ("block_up", "تم حجب 2 نفر"),
+            ("block_down", "تم رفع الحجب عن 1 نفر"),
+            ("members_up", "إضافة طفل"),
+            ("name_change", "تغيير الاسم من فلان الى علان"),
+        ]
+    }
+    assert len(set(colors.values())) == len(colors)  # كلها ألوان مختلفة عن بعضها
+    assert app._status_part_color("نص غير معروف إطلاقاً")[1] == "#F4F6F6"  # رمادي افتراضي
+
+
+def test_colgroup_seq_column_wide_enough_for_three_digit_numbers():
+    """طلب صريح بعد ملاحظة أرقام تسلسل من 3 خانات تنقص بعلامة '...'
+    بالجدول المدموج (اللي يجمع تسلسل أطول من أي حالة منفردة) — عمود "ت"
+    لازم يكون أوسع من عرضه الأصلي (4%)، والمجموع الكلي يبقى 100%."""
+    import re
+    html = app._colgroup_html()
+    widths = [float(w) for w in re.findall(r'width:([\d.]+)%', html)]
+    assert len(widths) == 7
+    assert abs(sum(widths) - 100) < 0.01
+    assert widths[0] > 4
+
+
 def test_matched_categories_merges_all_but_added_and_deleted_without_duplication():
     """المضافة والمنقولة تبقيان بجدولهما الخاص، وكل باقي الحالات (حجب،
     زيادة أفراد، تغيير اسم...) تندمج بجدول واحد فقط — وأي عائلة تنطبق
