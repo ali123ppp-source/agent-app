@@ -211,6 +211,54 @@ def test_process_comparison_ignores_single_letter_typo_and_missing_space_in_name
     assert "تغيير الاسم" in by_card["2222"]["الإحالة"]
 
 
+def test_legend_appears_in_classic_glass_and_canva_reports(agent921_files):
+    """طلب صريح: ورقة توضيح لكل الحالات مضافة على النماذج الثلاثة (الأصلي،
+    الزجاجي، كانفا) بدون ما توقف توليد أي تقرير. نتحقق من محتوى الـHTML
+    المبني مباشرة (مو نص PDF المستخرَج) لأن استخراج النص من PDF يعيد
+    تشكيل/عكس بعض تركيبات الحروف العربية أحياناً (ملاحظة موثّقة بباقي
+    اختبارات هذا الملف) فيكسر أي مطابقة حرفية غير موثوقة."""
+    old_file, new_file = agent921_files
+    results, counters, card_col_name = _run_pipeline(old_file, new_file)
+    df = pd.DataFrame(results)
+
+    import fitz
+
+    classic_pdf, agent_name = app.create_classic_report_pdf(df, card_col_name, "921-FOOD.docx")
+    classic_doc = fitz.open(stream=classic_pdf.getvalue(), filetype="pdf")
+    assert classic_doc[-1].get_text().strip() != ""  # صفحة أخيرة (الدليل) فيها محتوى فعلي
+
+    glass_pdf, _ = app.create_combined_pdf_report(df, card_col_name, "921-FOOD.docx", template="glass")
+    glass_doc = fitz.open(stream=glass_pdf.getvalue(), filetype="pdf")
+    assert len(glass_doc) >= 2  # غلاف + دليل على الأقل قبل أقسام الحالات
+
+    canva_pdf, _ = app.create_combined_pdf_report(df, card_col_name, "921-FOOD.docx", template="canva")
+    canva_doc = fitz.open(stream=canva_pdf.getvalue(), filetype="pdf")
+    assert len(canva_doc) >= 2
+
+    # المصدر الموثوق: محتوى الـHTML الفعلي (قبل تحويله PDF) لازم يحتوي
+    # نصوص الدليل الحرفية بالضبط، بلا أي احتمال تشكيل/عكس.
+    glass_html = app._legend_section_html()
+    canva_html = app._legend_section_html_canva()
+    assert "دليل شرح حالات التقرير" in glass_html
+    assert "دليل شرح حالات التقرير" in canva_html
+    for _key, sample, explanation in app.LEGEND_ENTRIES:
+        assert app.esc(sample) in glass_html and app.esc(sample) in canva_html
+        assert app.esc(explanation) in glass_html and app.esc(explanation) in canva_html
+
+
+def test_legend_explanation_text_is_not_clipped_by_table_overflow_rules():
+    """اختبار ارتداد: الشرح كان يتقص بعلامة "..." بجداول الزجاجي/كانفا
+    لأنه يرث قاعدة nowrap+ellipsis العامة لخلايا الجدول الرئيسي — لازم
+    النص الكامل يبقى موجود بمحتوى الـHTML (overflow:visible)."""
+    html_glass = app._legend_section_html()
+    html_canva = app._legend_section_html_canva()
+    long_explanation = app.LEGEND_ENTRIES[0][2]
+    assert long_explanation in html_glass
+    assert long_explanation in html_canva
+    assert "overflow: visible" in app._PDF_CSS
+    assert "overflow: visible" in app._PDF_CSS_CANVA
+
+
 def test_status_pills_html_gives_each_status_its_own_distinct_color():
     """صف فيه أكثر من حالة بنفس الوقت (حجب + إضافة طفل) لازم ياخذ فقاعتين
     منفصلتين بلونين مختلفين، مو فقاعة وحدة بلون رمادي موحّد للكل."""

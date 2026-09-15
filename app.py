@@ -1225,6 +1225,37 @@ MERGED_OTHER_CATEGORY = {
     "show_referral": True, "match": lambda r: False,
 }
 
+CATEGORY_DEFS_BY_KEY = {cat["key"]: cat for cat in CATEGORY_DEFS}
+
+# ورقة توضيح تشرح معنى كل حالة ممكن تظهر بعمود "الإحالة"/الحالة بأي
+# تقرير — نفس النص بالضبط اللي ينتجه process_comparison، مع لون كل حالة
+# (مأخوذ من CATEGORY_DEFS نفسها) عشان تظهر بالورقة "كما هية شكلها" فعلاً
+# بالتقرير، مو نص عادي. الشرح بكل سطر اعتمده المستخدم صراحة.
+LEGEND_ENTRIES = [
+    ("name_change", "تم تغيير الاسم / السابق / [الاسم القديم]",
+     "نفس رقم البطاقة موجود بالملفين، لكن اسم رب الأسرة تغيّر فعلياً (بعد تجاهل فرق المسافات والفرق الإملائي البسيط بحرف واحد) — يُعرض الاسم القديم جنب الجديد."),
+    ("full_block", "حجب كلي ❌",
+     "كل أفراد العائلة صاروا محجوبين بالملف الحديث (عدد المحجوبين = العدد الكلي) — توقف استحقاق العائلة بالكامل."),
+    ("block_up", "تم حجب N نفر",
+     "عدد الأفراد المحجوبين زاد بمقدار N عن الملف القديم (حجب جزئي، مو كل العائلة)."),
+    ("block_down", "تم رفع الحجب عن N نفر",
+     "عدد الأفراد المحجوبين قلّ بمقدار N — رجع الاستحقاق لجزء من العائلة أو كلها."),
+    ("members_up", "إضافة طفل 👶",
+     "العدد الكلي لأفراد العائلة زاد عن الملف القديم (فرد جديد انضاف للبطاقة)."),
+    ("members_down", "نقصان N نفر",
+     "العدد الكلي لأفراد العائلة قلّ بمقدار N (فرد انحذف من البطاقة)."),
+    ("generic_update", "تحديث بيانات",
+     "صار تغيير برقم من أرقام العائلة لكن ما انطبقت عليه ولا حالة من الحالات المحددة أعلاه."),
+    ("eligible_up", "زيادة مستحق (N)",
+     "[بنموذج \"المستحق فقط\" بس] عدد الأفراد المستحقين زاد بمقدار N."),
+    ("eligible_down", "نقصان مستحق (N)",
+     "[بنموذج \"المستحق فقط\" بس] عدد الأفراد المستحقين نقص بمقدار N."),
+    ("added", "عائلة مضافة ✨",
+     "رقم البطاقة موجود بالملف الحديث بس مو موجود إطلاقاً بالملف القديم — عائلة جديدة انضافت للكشف."),
+    ("deleted", "عائلة منقولة ❌",
+     "رقم البطاقة كان موجود بالملف القديم وما عاد موجود بالملف الحديث — انحذفت/انتقلت من الكشف."),
+]
+
 def _hex_to_rgb(hex_color):
     h = hex_color.lstrip('#')
     return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
@@ -1313,6 +1344,13 @@ _PDF_CSS = """
   .cover .summary-card { width: 145px; padding: 16px 8px; border-radius: 18px; background: var(--glass-bg); border: 1px solid var(--glass-border); box-shadow: 0 3px 12px var(--glass-shadow); }
   .cover .summary-card .num { display: block; font-size: 28px; font-weight: 900; color: var(--accent-dark); }
   .cover .summary-card .lbl { font-size: 11.5px; color: var(--accent-dark); font-weight: 600; }
+  .legend-table { width: 100%; border-collapse: collapse; table-layout: auto; font-size: 13px; }
+  .legend-table thead th { background: #34495E; color: #fff; font-weight: 700; padding: 11px 10px; text-align: center; font-size: 12px; }
+  .legend-table tbody td { padding: 12px 10px; border-bottom: 1px solid #E5E8EC; text-align: right; vertical-align: middle; }
+  .legend-table tbody tr:nth-child(even) { background: #F8F9FA; }
+  .legend-sample { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; text-align: center !important; }
+  .legend-explain { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; line-height: 1.6; }
+  .legend-sample .status-pill { font-size: 11.5px; padding: 5px 16px; }
 """
 
 def _wrap_pdf_document(title, body_html, css=None):
@@ -1384,6 +1422,12 @@ _PDF_CSS_CANVA = """
   .cv-cover .cv-summary-card { width: 145px; padding: 16px 8px; border-radius: 16px; background: var(--accent-soft); border: 1px solid var(--card-border); }
   .cv-cover .cv-summary-card .num { display: block; font-size: 26px; font-weight: 900; color: var(--accent-dark); }
   .cv-cover .cv-summary-card .lbl { font-size: 11.5px; color: #34495E; font-weight: 600; }
+  .legend-table { width: 100%; border-collapse: collapse; table-layout: auto; font-size: 13px; }
+  .legend-table thead th { background: #fff; color: #34495E; font-weight: 800; padding: 12px 10px; text-align: center; font-size: 12px; border-bottom: 2px solid #34495E; }
+  .legend-table tbody td { padding: 12px 10px; border-bottom: 1px solid #E5E8EC; text-align: right; vertical-align: middle; }
+  .legend-sample { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; text-align: center !important; }
+  .legend-explain { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; line-height: 1.6; }
+  .legend-sample .status-pill { font-size: 11.5px; padding: 5px 16px; }
 """
 
 def _colgroup_html_canva(show_referral=None):
@@ -1559,6 +1603,53 @@ def _matched_categories(df_results_full):
         matched.append((MERGED_OTHER_CATEGORY, other_rows))
     return matched
 
+def _legend_section_html():
+    """صفحة توضيح (زجاجي): تشرح معنى كل حالة ممكن تظهر بعمود الإحالة —
+    كل حالة معروضة "كما هية شكلها" (فقاعة بنفس لونها الحقيقي بالتقرير)
+    جنب شرحها."""
+    rows_html = "".join(
+        f'<tr><td class="legend-sample"><span class="status-pill" style="background:{CATEGORY_DEFS_BY_KEY[key]["accent_soft"]}; '
+        f'border-color:{_rgba(CATEGORY_DEFS_BY_KEY[key]["accent"], 0.45)}; color:{CATEGORY_DEFS_BY_KEY[key]["accent_dark"]};">'
+        f'{esc(sample)}</span></td><td class="legend-explain">{esc(explanation)}</td></tr>'
+        for key, sample, explanation in LEGEND_ENTRIES
+    )
+    return f"""
+    <section class="report-section with-break" style="--accent:#34495E; --accent-dark:#2C3E50; --glass-bg:#EAECEE; --glass-border:#D5D8DC; --glass-shadow:rgba(52,73,94,0.15);">
+      <div class="header">
+        <div class="icon-badge">📖</div>
+        <h1>دليل شرح حالات التقرير</h1>
+        <div class="pills"><div class="desc-pill">معنى كل حالة تظهر بعمود "الإحالة" داخل التقارير</div></div>
+      </div>
+      <div class="table-wrap">
+        <table class="legend-table">
+          <thead><tr><th>الحالة كما تظهر بالتقرير</th><th>الشرح</th></tr></thead>
+          <tbody>{rows_html}</tbody>
+        </table>
+      </div>
+    </section>"""
+
+def _legend_section_html_canva():
+    """نفس صفحة التوضيح لكن بتصميم كانفا."""
+    rows_html = "".join(
+        f'<tr><td class="legend-sample"><span class="status-pill" style="background:{CATEGORY_DEFS_BY_KEY[key]["accent_soft"]}; '
+        f'border-color:{_rgba(CATEGORY_DEFS_BY_KEY[key]["accent"], 0.45)}; color:{CATEGORY_DEFS_BY_KEY[key]["accent_dark"]};">'
+        f'{esc(sample)}</span></td><td class="legend-explain">{esc(explanation)}</td></tr>'
+        for key, sample, explanation in LEGEND_ENTRIES
+    )
+    return f"""
+    <section class="cv-section with-break" style="--accent:#34495E; --accent-dark:#2C3E50; --card-border:rgba(52,73,94,0.3); --grid-line:rgba(44,62,80,0.045);">
+      <div class="cv-header">
+        <h1>دليل شرح حالات التقرير</h1>
+        <p>معنى كل حالة تظهر بعمود "الإحالة" داخل التقارير</p>
+      </div>
+      <div class="cv-table-wrap">
+        <table class="legend-table">
+          <thead><tr><th>الحالة كما تظهر بالتقرير</th><th>الشرح</th></tr></thead>
+          <tbody>{rows_html}</tbody>
+        </table>
+      </div>
+    </section>"""
+
 def create_category_pdf_reports(df_results_full, card_col_name, new_file_name, template="glass"):
     """يبني تقرير PDF أنيق مستقل لكل حالة من حالات المتغيرات المكتشفة
     (مضافة، منقولة، حجب كلي/جزئي، رفع حجب، زيادة/نقصان أفراد أو مستحقين،
@@ -1608,11 +1699,12 @@ def create_combined_pdf_report(df_results_full, card_col_name, new_file_name, te
             <div class="cv-summary-grid">{summary_cards}</div>
           </div>
         </section>"""
+        legend_html = _legend_section_html_canva()
         sections_html = "".join(
             _category_section_html_canva(rows, cat, card_col_name, agent_label, with_break=True)
             for cat, rows in matched
         )
-        pdf_bytes = WeasyHTML(string=_wrap_pdf_document("التقرير الشامل", cover_html + sections_html, css=_PDF_CSS_CANVA)).write_pdf()
+        pdf_bytes = WeasyHTML(string=_wrap_pdf_document("التقرير الشامل", cover_html + legend_html + sections_html, css=_PDF_CSS_CANVA)).write_pdf()
     else:
         cover_style = (
             f"--accent:{cover_accent}; --accent-soft:{cover_soft}; --accent-dark:{cover_dark};"
@@ -1632,11 +1724,12 @@ def create_combined_pdf_report(df_results_full, card_col_name, new_file_name, te
             <div class="summary-grid">{summary_cards}</div>
           </div>
         </section>"""
+        legend_html = _legend_section_html()
         sections_html = "".join(
             _category_section_html(rows, cat, card_col_name, agent_label, with_break=True)
             for cat, rows in matched
         )
-        pdf_bytes = WeasyHTML(string=_wrap_pdf_document("التقرير الشامل", cover_html + sections_html)).write_pdf()
+        pdf_bytes = WeasyHTML(string=_wrap_pdf_document("التقرير الشامل", cover_html + legend_html + sections_html)).write_pdf()
 
     pdf_buffer = BytesIO(pdf_bytes)
     pdf_buffer.seek(0)
@@ -1669,6 +1762,8 @@ _CLASSIC_PDF_CSS = """
   .stat-box { flex: 1; border: 1.5px solid #000; border-radius: 10px; padding: 10px 6px; text-align: center; background: #F7F7F7; }
   .stat-box .num { display: block; font-size: 24px; font-weight: 800; color: #E30000; line-height: 1.2; }
   .stat-box .lbl { font-size: 11.5px; font-weight: 600; color: #222; }
+  .legend-sample { white-space: nowrap; font-size: 14px; }
+  .legend-explain { text-align: right; font-weight: 500; line-height: 1.5; }
 """
 
 def _classic_status_html(referral_text):
@@ -1745,10 +1840,26 @@ def _classic_table_html(rows, card_col_name):
       <tbody>{rows_html}</tbody>
     </table>"""
 
+def _classic_legend_html():
+    """صفحة توضيح (النموذج الأصلي): تشرح معنى كل حالة ممكن تظهر بعمود
+    "الحالة" — كل حالة معروضة بنفس تلوينها الحقيقي (_classic_status_html)
+    جنب شرحها، بآخر الملف كملحق."""
+    rows_html = "".join(
+        f'<tr><td class="status legend-sample">{_classic_status_html(sample)}</td>'
+        f'<td class="legend-explain">{esc(explanation)}</td></tr>'
+        for _key, sample, explanation in LEGEND_ENTRIES
+    )
+    return f"""
+    <div class="subtitle">دليل شرح الحالات</div>
+    <table>
+      <thead><tr><th>الحالة كما تظهر بالتقرير</th><th>الشرح</th></tr></thead>
+      <tbody>{rows_html}</tbody>
+    </table>"""
+
 def create_classic_report_pdf(df_results_full, card_col_name, new_file_name):
     """يبني تقرير PDF كلاسيكي واحد (عنوان أحمر، جدول أسود الحدود) بثلاثة
-    أقسام منفصلة داخل نفس الملف — كل قسم بصفحة جديدة وبمربعات إحصائية
-    خاصة فيه: الجدول الشامل (العوائل المعدّلة فقط)، ثم العوائل المضافة،
+    أقسام منفصلة داخل نفس الملف، وصفحة توضيح لكل الحالات بآخره — كل قسم
+    بصفحة جديدة وبمربعات إحصائية خاصة فيه: الجدول الشامل (العوائل المعدّلة فقط)، ثم العوائل المضافة،
     ثم العوائل المنقولة. لا تختلط أي حالة بجدول حالة ثانية. يرجع
     (pdf_buffer, agent_name)."""
     agent_name, agency_suffix = _classic_agent_name_and_suffix(new_file_name)
@@ -1771,6 +1882,8 @@ def create_classic_report_pdf(df_results_full, card_col_name, new_file_name):
             + _classic_stats_html(transferred_rows, "منقولة")
             + _classic_table_html(transferred_rows, card_col_name)
         )
+
+    body_html += _classic_legend_html()
 
     main_html = f"""<!doctype html>
 <html lang="ar" dir="rtl">
