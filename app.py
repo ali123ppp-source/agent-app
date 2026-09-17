@@ -1451,25 +1451,21 @@ _PDF_CSS_NOIR = """
   .nr-stat { flex: 1; text-align: center; padding: 13px 6px; border-radius: 10px; background: #0B1F3A; }
   .nr-stat .num { display: block; font-size: 24px; font-weight: 900; color: #D4AF37; line-height: 1.2; }
   .nr-stat .lbl { font-size: 10px; color: #C9D6E3; font-weight: 600; }
-  .nr-table-wrap { border: 1.5px solid #0B1F3A; border-radius: 10px; overflow: hidden; }
-  table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px; }
-  thead th { background: #0B1F3A; color: #D4AF37; font-weight: 700; padding: 11px 4px; text-align: center; font-size: 10.5px; letter-spacing: 0.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  tbody td { padding: 9px 5px; text-align: center; border-bottom: 1px solid #EDEBE2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  tbody tr:nth-child(even) { background: #FAF8F2; }
-  tbody tr:last-child td { border-bottom: none; }
-  tbody tr { page-break-inside: avoid; }
-  .nr-idx { color: #0B1F3A; font-weight: 800; }
-  .nr-name { text-align: right; font-weight: 700; color: #1B2631; font-size: 12px; white-space: normal; overflow: visible; text-overflow: clip; }
-  .nr-name .name-text { line-height: 1.3; }
-  .status-pills { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 3px; margin-top: 4px; }
+  .status-pills { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 3px; margin-top: 8px; }
   .status-pill { display: inline-block; padding: 2px 11px; border-radius: 999px; background: var(--pill-bg); border: 1px solid var(--pill-border); color: var(--accent-dark); font-size: 9px; font-weight: 600; line-height: 1.6; white-space: normal; }
-  .nr-mono { font-family: 'Consolas', monospace; direction: ltr; color: #7A5C00; font-weight: 800; font-size: 14.5px; background: #F7EFD4; border: 1px solid #E8D89A; border-radius: 6px; padding: 3px 7px; }
-  .nr-num { font-weight: 800; color: #1B2631; font-size: 14.5px; }
-  .nr-eligible { color: #1B7A43; }
-  .nr-withheld { color: #B23A32; }
-  .nr-blank { vertical-align: middle; }
-  .th-blank { white-space: normal !important; font-size: 8.5px !important; line-height: 1.2; }
-  .blank-chip { display: block; margin: 0 auto; width: 85%; height: 32px; border: 1.2px solid #0B1F3A; border-radius: 10px; background: #fff; }
+  .nr-cards-grid { display: flex; flex-wrap: wrap; gap: 12px; }
+  .nr-card { width: calc(50% - 6px); border: 1.5px solid #0B1F3A; border-right: 5px solid #D4AF37; border-radius: 14px; padding: 14px 16px; background: #fff; page-break-inside: avoid; }
+  .nr-card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .nr-card-seq { display: inline-block; width: 24px; height: 24px; line-height: 24px; text-align: center; border-radius: 50%; background: #0B1F3A; color: #D4AF37; font-weight: 800; font-size: 11px; }
+  .nr-card-blank { display: inline-block; width: 46px; height: 20px; border: 1px solid #0B1F3A; border-radius: 6px; background: #fff; }
+  .nr-card-name { text-align: right; font-size: 14.5px; font-weight: 800; color: #1B2631; margin-bottom: 8px; line-height: 1.3; }
+  .nr-card-cardnum { font-family: 'Consolas', monospace; direction: ltr; text-align: center; color: #7A5C00; background: #F7EFD4; border: 1px solid #E8D89A; border-radius: 7px; padding: 4px 8px; font-weight: 800; font-size: 13px; margin-bottom: 10px; }
+  .nr-card-stats { display: flex; gap: 6px; }
+  .nr-card-stat { flex: 1; text-align: center; background: #F7F7F7; border-radius: 8px; padding: 6px 4px; }
+  .nr-card-stat .num { display: block; font-weight: 900; font-size: 16px; color: #1B2631; }
+  .nr-card-stat .lbl { font-size: 8.5px; color: #5D6D7E; font-weight: 600; }
+  .nr-card-stat.eligible .num { color: #1B7A43; }
+  .nr-card-stat.withheld .num { color: #B23A32; }
   .nr-footer { margin-top: 16px; padding-top: 10px; border-top: 1px solid #D4AF37; display: flex; justify-content: space-between; font-size: 10.5px; color: #5D6D7E; font-weight: 600; }
   .nr-cover { background: linear-gradient(160deg, #0B1F3A 0%, #16305A 100%); border-radius: 20px; padding: 60px 40px; margin-top: 40px; text-align: center; box-shadow: 0 8px 22px rgba(11,31,58,0.28); }
   .nr-cover .nr-seal-big { display: inline-block; width: 110px; height: 110px; line-height: 104px; border-radius: 50%; border: 3px solid #D4AF37; text-align: center; font-size: 50px; margin-bottom: 22px; background: rgba(212,175,55,0.10); }
@@ -1488,9 +1484,6 @@ _PDF_CSS_NOIR = """
   .legend-sample .status-pill { font-size: 11.5px; padding: 5px 16px; }
 """
 
-def _colgroup_html_noir(show_referral=None):
-    return _colgroup_html(show_referral)
-
 def _category_section_html_noir(rows, cat, card_col_name, agent_label, with_break=False):
     agent_label = esc(agent_label)
     title, subtitle = esc(cat["title"]), esc(cat["subtitle"].format(agent=agent_label))
@@ -1505,19 +1498,24 @@ def _category_section_html_noir(rows, cat, card_col_name, agent_label, with_brea
     total_eligible = sum(int(r.get("الأفراد المستحقة", 0) or 0) for r in rows)
     total_withheld = sum(int(r.get("الأفراد المحجوبين", 0) or 0) for r in rows)
 
-    rows_html = ""
+    cards_html = ""
     for i, r in enumerate(rows, start=1):
         status_pill = _status_pills_html(r.get('الإحالة', '')) if show_referral else ""
-        rows_html += f"""
-        <tr>
-          <td class="nr-idx">{i}</td>
-          <td class="nr-mono">{esc(r.get(card_col_name, ''))}</td>
-          <td class="nr-name"><div class="name-text">{esc(r.get('اسم رب الأسرة', ''))}</div>{status_pill}</td>
-          <td class="nr-blank"><span class="blank-chip"></span></td>
-          <td class="nr-num">{esc(r.get('الأفراد الكلية', ''))}</td>
-          <td class="nr-num nr-eligible">{esc(r.get('الأفراد المستحقة', ''))}</td>
-          <td class="nr-num nr-withheld">{esc(r.get('الأفراد المحجوبين', ''))}</td>
-        </tr>"""
+        cards_html += f"""
+        <div class="nr-card">
+          <div class="nr-card-top">
+            <span class="nr-card-blank"></span>
+            <span class="nr-card-seq">{i}</span>
+          </div>
+          <div class="nr-card-name">{esc(r.get('اسم رب الأسرة', ''))}</div>
+          <div class="nr-card-cardnum">{esc(card_col_name)}: {esc(r.get(card_col_name, ''))}</div>
+          <div class="nr-card-stats">
+            <div class="nr-card-stat"><span class="num">{esc(r.get('الأفراد الكلية', ''))}</span><span class="lbl">الكلية</span></div>
+            <div class="nr-card-stat eligible"><span class="num">{esc(r.get('الأفراد المستحقة', ''))}</span><span class="lbl">المستحقة</span></div>
+            <div class="nr-card-stat withheld"><span class="num">{esc(r.get('الأفراد المحجوبين', ''))}</span><span class="lbl">المحجوبين</span></div>
+          </div>
+          {status_pill}
+        </div>"""
 
     section_class = "nr-section with-break" if with_break else "nr-section"
     return f"""
@@ -1534,13 +1532,7 @@ def _category_section_html_noir(rows, cat, card_col_name, agent_label, with_brea
         <div class="nr-stat"><span class="num">{total_eligible}</span><span class="lbl">الأفراد المستحقة</span></div>
         <div class="nr-stat"><span class="num">{total_withheld}</span><span class="lbl">الأفراد المحجوبين</span></div>
       </div>
-      <div class="nr-table-wrap">
-        <table>
-          {_colgroup_html_noir()}
-          <thead><tr><th>ت</th><th>{esc(card_col_name)}</th><th>اسم رب الأسرة</th><th class="th-blank">حقل فارغ</th><th>الكلية</th><th>المستحقة</th><th>المحجوبين</th></tr></thead>
-          <tbody>{rows_html}</tbody>
-        </table>
-      </div>
+      <div class="nr-cards-grid">{cards_html}</div>
       <div class="nr-footer">
         <span>نظام المقارنة الشامل والذكي — وكيل رقم {agent_label}</span>
         <span>عدد السجلات: {len(rows)}</span>
