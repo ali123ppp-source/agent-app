@@ -1430,6 +1430,151 @@ _PDF_CSS_CANVA = """
   .legend-sample .status-pill { font-size: 11.5px; padding: 5px 16px; }
 """
 
+# -----------------------------------------------------------------------------
+# نموذج "الفخم": تصميم مختلف كلياً عن الزجاجي/كانفا (اللي كلاهما خلفية
+# بيضاء وألوان باستيل خفيفة) — مظهر "ملف رسمي فاخر" بلافتة رأسية كحلية
+# داكنة وحواف ذهبية، شارة ختم دائرية، أرقام البطاقة بصندوق ذهبي فاتح،
+# وجدول بحدود رفيعة أنيقة. نفس ألوان الحالات (CATEGORY_DEFS) تبقى تظهر
+# بفقاعات الحالة تحت الاسم، بس الهوية البصرية العامة مختلفة 100%.
+# -----------------------------------------------------------------------------
+_PDF_CSS_NOIR = """
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; font-family: 'Cairo', 'Tajawal', 'Arial', sans-serif; color: #1B2631; background: #fff; }
+  @page { size: A4; margin: 12mm 10mm 14mm 10mm; }
+  .nr-section.with-break { page-break-before: always; }
+  .nr-masthead { background: linear-gradient(135deg, #0B1F3A 0%, #16305A 100%); border-radius: 16px; padding: 26px 24px 22px; margin-bottom: 20px; box-shadow: 0 8px 22px rgba(11,31,58,0.28); text-align: center; }
+  .nr-seal { display: inline-block; width: 62px; height: 62px; line-height: 58px; border-radius: 50%; border: 2.5px solid #D4AF37; text-align: center; font-size: 28px; margin-bottom: 12px; background: rgba(212,175,55,0.10); }
+  .nr-masthead h1 { text-align: center; color: #fff; font-size: 25px; font-weight: 800; margin: 0 0 8px; letter-spacing: 0.4px; }
+  .nr-masthead .nr-sub { text-align: center; color: #C9D6E3; font-size: 12px; font-weight: 500; margin: 0 0 14px; }
+  .nr-agent-badge { display: block; width: fit-content; margin: 0 auto; background: #D4AF37; color: #0B1F3A; font-weight: 800; font-size: 12px; padding: 6px 22px; border-radius: 999px; }
+  .nr-stats { display: flex; gap: 10px; margin-bottom: 18px; }
+  .nr-stat { flex: 1; text-align: center; padding: 13px 6px; border-radius: 10px; background: #0B1F3A; }
+  .nr-stat .num { display: block; font-size: 24px; font-weight: 900; color: #D4AF37; line-height: 1.2; }
+  .nr-stat .lbl { font-size: 10px; color: #C9D6E3; font-weight: 600; }
+  .nr-table-wrap { border: 1.5px solid #0B1F3A; border-radius: 10px; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px; }
+  thead th { background: #0B1F3A; color: #D4AF37; font-weight: 700; padding: 11px 4px; text-align: center; font-size: 10.5px; letter-spacing: 0.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  tbody td { padding: 9px 5px; text-align: center; border-bottom: 1px solid #EDEBE2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  tbody tr:nth-child(even) { background: #FAF8F2; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr { page-break-inside: avoid; }
+  .nr-idx { color: #0B1F3A; font-weight: 800; }
+  .nr-name { text-align: right; font-weight: 700; color: #1B2631; font-size: 12px; white-space: normal; overflow: visible; text-overflow: clip; }
+  .nr-name .name-text { line-height: 1.3; }
+  .status-pills { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 3px; margin-top: 4px; }
+  .status-pill { display: inline-block; padding: 2px 11px; border-radius: 999px; background: var(--pill-bg); border: 1px solid var(--pill-border); color: var(--accent-dark); font-size: 9px; font-weight: 600; line-height: 1.6; white-space: normal; }
+  .nr-mono { font-family: 'Consolas', monospace; direction: ltr; color: #7A5C00; font-weight: 800; font-size: 14.5px; background: #F7EFD4; border: 1px solid #E8D89A; border-radius: 6px; padding: 3px 7px; }
+  .nr-num { font-weight: 800; color: #1B2631; font-size: 14.5px; }
+  .nr-eligible { color: #1B7A43; }
+  .nr-withheld { color: #B23A32; }
+  .nr-blank { vertical-align: middle; }
+  .th-blank { white-space: normal !important; font-size: 8.5px !important; line-height: 1.2; }
+  .blank-chip { display: block; margin: 0 auto; width: 85%; height: 32px; border: 1.2px solid #0B1F3A; border-radius: 10px; background: #fff; }
+  .nr-footer { margin-top: 16px; padding-top: 10px; border-top: 1px solid #D4AF37; display: flex; justify-content: space-between; font-size: 10.5px; color: #5D6D7E; font-weight: 600; }
+  .nr-cover { background: linear-gradient(160deg, #0B1F3A 0%, #16305A 100%); border-radius: 20px; padding: 60px 40px; margin-top: 40px; text-align: center; box-shadow: 0 8px 22px rgba(11,31,58,0.28); }
+  .nr-cover .nr-seal-big { display: inline-block; width: 110px; height: 110px; line-height: 104px; border-radius: 50%; border: 3px solid #D4AF37; text-align: center; font-size: 50px; margin-bottom: 22px; background: rgba(212,175,55,0.10); }
+  .nr-cover h1 { color: #fff; font-size: 32px; font-weight: 800; margin: 0 0 10px; }
+  .nr-cover .nr-cover-sub { color: #C9D6E3; font-size: 13px; margin-bottom: 18px; }
+  .nr-cover .nr-agent-badge { margin-bottom: 40px; }
+  .nr-cover .nr-summary-grid { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; }
+  .nr-cover .nr-summary-card { width: 140px; padding: 18px 8px; border-radius: 12px; background: rgba(255,255,255,0.06); border: 1px solid rgba(212,175,55,0.4); }
+  .nr-cover .nr-summary-card .num { display: block; font-size: 28px; font-weight: 900; color: #D4AF37; }
+  .nr-cover .nr-summary-card .lbl { font-size: 11px; color: #C9D6E3; font-weight: 600; }
+  .legend-table { width: 100%; border-collapse: collapse; table-layout: auto; font-size: 13px; }
+  .legend-table thead th { background: #0B1F3A; color: #D4AF37; font-weight: 700; padding: 11px 10px; text-align: center; font-size: 12px; }
+  .legend-table tbody td { padding: 12px 10px; border-bottom: 1px solid #EDEBE2; text-align: right; vertical-align: middle; }
+  .legend-sample { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; text-align: center !important; }
+  .legend-explain { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; line-height: 1.6; }
+  .legend-sample .status-pill { font-size: 11.5px; padding: 5px 16px; }
+"""
+
+def _colgroup_html_noir(show_referral=None):
+    return _colgroup_html(show_referral)
+
+def _category_section_html_noir(rows, cat, card_col_name, agent_label, with_break=False):
+    agent_label = esc(agent_label)
+    title, subtitle = esc(cat["title"]), esc(cat["subtitle"].format(agent=agent_label))
+    accent, accent_soft, accent_dark = cat["accent"], cat["accent_soft"], cat["accent_dark"]
+    badge_label, icon, show_referral = esc(cat["badge_label"]), cat["icon"], cat["show_referral"]
+
+    style_vars = (
+        f"--pill-bg:{_rgba(accent, 0.16)}; --pill-border:{_rgba(accent, 0.35)}; --accent-dark:{accent_dark};"
+    )
+
+    total_people = sum(int(r.get("الأفراد الكلية", 0) or 0) for r in rows)
+    total_eligible = sum(int(r.get("الأفراد المستحقة", 0) or 0) for r in rows)
+    total_withheld = sum(int(r.get("الأفراد المحجوبين", 0) or 0) for r in rows)
+
+    rows_html = ""
+    for i, r in enumerate(rows, start=1):
+        status_pill = _status_pills_html(r.get('الإحالة', '')) if show_referral else ""
+        rows_html += f"""
+        <tr>
+          <td class="nr-idx">{i}</td>
+          <td class="nr-mono">{esc(r.get(card_col_name, ''))}</td>
+          <td class="nr-name"><div class="name-text">{esc(r.get('اسم رب الأسرة', ''))}</div>{status_pill}</td>
+          <td class="nr-blank"><span class="blank-chip"></span></td>
+          <td class="nr-num">{esc(r.get('الأفراد الكلية', ''))}</td>
+          <td class="nr-num nr-eligible">{esc(r.get('الأفراد المستحقة', ''))}</td>
+          <td class="nr-num nr-withheld">{esc(r.get('الأفراد المحجوبين', ''))}</td>
+        </tr>"""
+
+    section_class = "nr-section with-break" if with_break else "nr-section"
+    return f"""
+    <section class="{section_class}" style="{style_vars}">
+      <div class="nr-masthead">
+        <div class="nr-seal">{icon}</div>
+        <h1>{title}</h1>
+        <div class="nr-sub">{subtitle}</div>
+        <div class="nr-agent-badge">الوكيل: {agent_label}</div>
+      </div>
+      <div class="nr-stats">
+        <div class="nr-stat"><span class="num">{len(rows)}</span><span class="lbl">عدد العوائل ({badge_label})</span></div>
+        <div class="nr-stat"><span class="num">{total_people}</span><span class="lbl">إجمالي الأفراد</span></div>
+        <div class="nr-stat"><span class="num">{total_eligible}</span><span class="lbl">الأفراد المستحقة</span></div>
+        <div class="nr-stat"><span class="num">{total_withheld}</span><span class="lbl">الأفراد المحجوبين</span></div>
+      </div>
+      <div class="nr-table-wrap">
+        <table>
+          {_colgroup_html_noir()}
+          <thead><tr><th>ت</th><th>{esc(card_col_name)}</th><th>اسم رب الأسرة</th><th class="th-blank">حقل فارغ</th><th>الكلية</th><th>المستحقة</th><th>المحجوبين</th></tr></thead>
+          <tbody>{rows_html}</tbody>
+        </table>
+      </div>
+      <div class="nr-footer">
+        <span>نظام المقارنة الشامل والذكي — وكيل رقم {agent_label}</span>
+        <span>عدد السجلات: {len(rows)}</span>
+      </div>
+    </section>"""
+
+def _build_category_pdf_html_noir(rows, cat, card_col_name, agent_label):
+    section = _category_section_html_noir(rows, cat, card_col_name, agent_label, with_break=False)
+    return _wrap_pdf_document(cat["title"], section, css=_PDF_CSS_NOIR)
+
+def _legend_section_html_noir():
+    """نفس صفحة التوضيح لكن بتصميم "الفخم" — فقاعة الحالة بنفس لونها
+    الحقيقي، وعنوان الصفحة بلافتة كحلية/ذهبية."""
+    rows_html = "".join(
+        f'<tr><td class="legend-sample"><span class="status-pill" style="background:{CATEGORY_DEFS_BY_KEY[key]["accent_soft"]}; '
+        f'border-color:{_rgba(CATEGORY_DEFS_BY_KEY[key]["accent"], 0.45)}; color:{CATEGORY_DEFS_BY_KEY[key]["accent_dark"]};">'
+        f'{esc(sample)}</span></td><td class="legend-explain">{esc(explanation)}</td></tr>'
+        for key, sample, explanation in LEGEND_ENTRIES
+    )
+    return f"""
+    <section class="nr-section with-break">
+      <div class="nr-masthead">
+        <div class="nr-seal">📖</div>
+        <h1>دليل شرح حالات التقرير</h1>
+        <div class="nr-sub">معنى كل حالة تظهر بعمود "الإحالة" داخل التقارير</div>
+      </div>
+      <div class="nr-table-wrap">
+        <table class="legend-table">
+          <thead><tr><th>الحالة كما تظهر بالتقرير</th><th>الشرح</th></tr></thead>
+          <tbody>{rows_html}</tbody>
+        </table>
+      </div>
+    </section>"""
+
 def _colgroup_html_canva(show_referral=None):
     return _colgroup_html(show_referral)
 
