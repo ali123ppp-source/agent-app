@@ -1439,46 +1439,50 @@ _PDF_CSS_CANVA = """
 # -----------------------------------------------------------------------------
 _PDF_CSS_NOIR = """
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; font-family: 'Cairo', 'Tajawal', 'Arial', sans-serif; color: #1B2631; background: #fff; }
-  @page { size: A4; margin: 12mm 10mm 14mm 10mm; }
+  html, body { margin: 0; padding: 0; font-family: 'Cairo', 'Tajawal', 'Arial', sans-serif; color: #1F2937; background: #fff; }
+  @page { size: A4; margin: 14mm 14mm 16mm 14mm; }
   .nr-section.with-break { page-break-before: always; }
-  .nr-masthead { background: linear-gradient(135deg, #0B1F3A 0%, #16305A 100%); border-radius: 16px; padding: 26px 24px 22px; margin-bottom: 20px; box-shadow: 0 8px 22px rgba(11,31,58,0.28); text-align: center; }
-  .nr-seal { display: inline-block; width: 62px; height: 62px; line-height: 58px; border-radius: 50%; border: 2.5px solid #D4AF37; text-align: center; font-size: 28px; margin-bottom: 12px; background: rgba(212,175,55,0.10); }
-  .nr-masthead h1 { text-align: center; color: #fff; font-size: 25px; font-weight: 800; margin: 0 0 8px; letter-spacing: 0.4px; }
-  .nr-masthead .nr-sub { text-align: center; color: #C9D6E3; font-size: 12px; font-weight: 500; margin: 0 0 14px; }
-  .nr-agent-badge { display: block; width: fit-content; margin: 0 auto; background: #D4AF37; color: #0B1F3A; font-weight: 800; font-size: 12px; padding: 6px 22px; border-radius: 999px; }
-  .nr-stats { display: flex; gap: 10px; margin-bottom: 18px; }
-  .nr-stat { flex: 1; text-align: center; padding: 13px 6px; border-radius: 10px; background: #0B1F3A; }
-  .nr-stat .num { display: block; font-size: 24px; font-weight: 900; color: #D4AF37; line-height: 1.2; }
-  .nr-stat .lbl { font-size: 10px; color: #C9D6E3; font-weight: 600; }
-  .status-pills { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 3px; margin-top: 8px; }
-  .status-pill { display: inline-block; padding: 2px 11px; border-radius: 999px; background: var(--pill-bg); border: 1px solid var(--pill-border); color: var(--accent-dark); font-size: 9px; font-weight: 600; line-height: 1.6; white-space: normal; }
-  .nr-cards-grid { display: flex; flex-wrap: wrap; gap: 12px; }
-  .nr-card { width: calc(50% - 6px); border: 1.5px solid #0B1F3A; border-right: 5px solid #D4AF37; border-radius: 14px; padding: 14px 16px; background: #fff; page-break-inside: avoid; }
-  .nr-card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-  .nr-card-seq { display: inline-block; width: 24px; height: 24px; line-height: 24px; text-align: center; border-radius: 50%; background: #0B1F3A; color: #D4AF37; font-weight: 800; font-size: 11px; }
-  .nr-card-blank { display: inline-block; width: 46px; height: 20px; border: 1px solid #0B1F3A; border-radius: 6px; background: #fff; }
-  .nr-card-name { text-align: right; font-size: 14.5px; font-weight: 800; color: #1B2631; margin-bottom: 8px; line-height: 1.3; }
-  .nr-card-cardnum { font-family: 'Consolas', monospace; direction: ltr; text-align: center; color: #7A5C00; background: #F7EFD4; border: 1px solid #E8D89A; border-radius: 7px; padding: 4px 8px; font-weight: 800; font-size: 13px; margin-bottom: 10px; }
-  .nr-card-stats { display: flex; gap: 6px; }
-  .nr-card-stat { flex: 1; text-align: center; background: #F7F7F7; border-radius: 8px; padding: 6px 4px; }
-  .nr-card-stat .num { display: block; font-weight: 900; font-size: 16px; color: #1B2631; }
-  .nr-card-stat .lbl { font-size: 8.5px; color: #5D6D7E; font-weight: 600; }
-  .nr-card-stat.eligible .num { color: #1B7A43; }
-  .nr-card-stat.withheld .num { color: #B23A32; }
-  .nr-footer { margin-top: 16px; padding-top: 10px; border-top: 1px solid #D4AF37; display: flex; justify-content: space-between; font-size: 10.5px; color: #5D6D7E; font-weight: 600; }
-  .nr-cover { background: linear-gradient(160deg, #0B1F3A 0%, #16305A 100%); border-radius: 20px; padding: 60px 40px; margin-top: 40px; text-align: center; box-shadow: 0 8px 22px rgba(11,31,58,0.28); }
-  .nr-cover .nr-seal-big { display: inline-block; width: 110px; height: 110px; line-height: 104px; border-radius: 50%; border: 3px solid #D4AF37; text-align: center; font-size: 50px; margin-bottom: 22px; background: rgba(212,175,55,0.10); }
-  .nr-cover h1 { color: #fff; font-size: 32px; font-weight: 800; margin: 0 0 10px; }
-  .nr-cover .nr-cover-sub { color: #C9D6E3; font-size: 13px; margin-bottom: 18px; }
-  .nr-cover .nr-agent-badge { margin-bottom: 40px; }
-  .nr-cover .nr-summary-grid { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; }
-  .nr-cover .nr-summary-card { width: 140px; padding: 18px 8px; border-radius: 12px; background: rgba(255,255,255,0.06); border: 1px solid rgba(212,175,55,0.4); }
-  .nr-cover .nr-summary-card .num { display: block; font-size: 28px; font-weight: 900; color: #D4AF37; }
-  .nr-cover .nr-summary-card .lbl { font-size: 11px; color: #C9D6E3; font-weight: 600; }
+  .nr-topbar { height: 5px; background: #14532D; border-radius: 3px; margin-bottom: 20px; }
+  .nr-masthead { text-align: center; margin-bottom: 4px; }
+  .nr-eyebrow { font-size: 11px; letter-spacing: 1.5px; color: #14532D; font-weight: 700; margin-bottom: 8px; }
+  .nr-masthead h1 { font-size: 26px; font-weight: 800; color: #1F2937; margin: 0 0 8px; }
+  .nr-masthead .nr-sub { font-size: 12.5px; color: #6B7280; font-weight: 500; margin: 0 0 14px; }
+  .nr-agent-badge { display: inline-block; border: 1.5px solid #14532D; color: #14532D; font-weight: 700; font-size: 11.5px; padding: 5px 20px; border-radius: 999px; }
+  .nr-hr { border: none; border-top: 1px solid #D9D5C8; margin: 18px 0; }
+  .nr-stats-row { display: flex; justify-content: space-around; margin-bottom: 8px; }
+  .nr-stat { text-align: center; padding: 0 14px; border-right: 1px solid #D9D5C8; flex: 1; }
+  .nr-stat:last-child { border-right: none; }
+  .nr-stat .num { display: block; font-size: 24px; font-weight: 900; color: #14532D; }
+  .nr-stat .lbl { font-size: 9.5px; color: #6B7280; font-weight: 600; }
+  .status-pills { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .status-pill { display: inline-block; padding: 2px 10px; border-radius: 999px; background: var(--pill-bg); border: 1px solid var(--pill-border); color: var(--accent-dark); font-size: 9px; font-weight: 600; line-height: 1.6; white-space: normal; }
+  .nr-rows { margin-top: 14px; }
+  .nr-row { display: flex; align-items: flex-start; gap: 12px; padding: 13px 0; border-bottom: 1px solid #E9E6DC; page-break-inside: avoid; }
+  .nr-row-num { font-size: 20px; font-weight: 900; color: #C9C4B4; min-width: 30px; text-align: center; }
+  .nr-row-body { flex: 1; min-width: 0; }
+  .nr-row-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 5px; }
+  .nr-row-name { font-size: 14px; font-weight: 800; color: #1F2937; }
+  .nr-row-card { font-family: 'Consolas', monospace; direction: ltr; font-size: 11.5px; color: #6B7280; font-weight: 700; white-space: nowrap; }
+  .nr-bar-wrap { display: flex; align-items: center; gap: 8px; }
+  .nr-bar { flex: 1; height: 9px; border-radius: 5px; background: #EDEBE2; overflow: hidden; display: flex; direction: ltr; }
+  .nr-bar-eligible { background: #14532D; height: 100%; }
+  .nr-bar-withheld { background: #B23A32; height: 100%; }
+  .nr-bar-nums { font-size: 10px; color: #6B7280; font-weight: 600; white-space: nowrap; }
+  .nr-row-blank { width: 40px; height: 17px; border: 1px solid #C9C4B4; border-radius: 5px; background: #fff; flex-shrink: 0; }
+  .nr-footer { margin-top: 16px; padding-top: 10px; border-top: 1px solid #14532D; display: flex; justify-content: space-between; font-size: 10.5px; color: #6B7280; font-weight: 600; }
+  .nr-cover { text-align: center; padding: 50px 20px; }
+  .nr-cover .nr-topbar { margin-bottom: 26px; }
+  .nr-cover h1 { font-size: 30px; font-weight: 800; color: #1F2937; margin: 0 0 10px; }
+  .nr-cover .nr-cover-sub { color: #6B7280; font-size: 13px; margin-bottom: 22px; }
+  .nr-cover .nr-agent-badge { margin-bottom: 36px; }
+  .nr-cover .nr-summary-grid { display: flex; flex-wrap: wrap; justify-content: center; }
+  .nr-cover .nr-summary-card { width: 130px; padding: 0 14px; border-right: 1px solid #D9D5C8; }
+  .nr-cover .nr-summary-card:last-child { border-right: none; }
+  .nr-cover .nr-summary-card .num { display: block; font-size: 30px; font-weight: 900; color: #14532D; }
+  .nr-cover .nr-summary-card .lbl { font-size: 11px; color: #6B7280; font-weight: 600; }
   .legend-table { width: 100%; border-collapse: collapse; table-layout: auto; font-size: 13px; }
-  .legend-table thead th { background: #0B1F3A; color: #D4AF37; font-weight: 700; padding: 11px 10px; text-align: center; font-size: 12px; }
-  .legend-table tbody td { padding: 12px 10px; border-bottom: 1px solid #EDEBE2; text-align: right; vertical-align: middle; }
+  .legend-table thead th { background: #fff; color: #14532D; font-weight: 800; padding: 10px; text-align: center; font-size: 12px; border-bottom: 2px solid #14532D; }
+  .legend-table tbody td { padding: 12px 10px; border-bottom: 1px solid #E9E6DC; text-align: right; vertical-align: middle; }
   .legend-sample { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; text-align: center !important; }
   .legend-explain { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; line-height: 1.6; }
   .legend-sample .status-pill { font-size: 11.5px; padding: 5px 16px; }
@@ -1498,41 +1502,53 @@ def _category_section_html_noir(rows, cat, card_col_name, agent_label, with_brea
     total_eligible = sum(int(r.get("الأفراد المستحقة", 0) or 0) for r in rows)
     total_withheld = sum(int(r.get("الأفراد المحجوبين", 0) or 0) for r in rows)
 
-    cards_html = ""
+    rows_html = ""
     for i, r in enumerate(rows, start=1):
         status_pill = _status_pills_html(r.get('الإحالة', '')) if show_referral else ""
-        cards_html += f"""
-        <div class="nr-card">
-          <div class="nr-card-top">
-            <span class="nr-card-blank"></span>
-            <span class="nr-card-seq">{i}</span>
+        total = _classic_safe_int(r.get('الأفراد الكلية'))
+        eligible = _classic_safe_int(r.get('الأفراد المستحقة'))
+        withheld = _classic_safe_int(r.get('الأفراد المحجوبين'))
+        if total > 0:
+            eligible_pct = round(eligible / total * 100, 1)
+            withheld_pct = round(withheld / total * 100, 1)
+        else:
+            eligible_pct = withheld_pct = 0
+        rows_html += f"""
+        <div class="nr-row">
+          <div class="nr-row-num">{i:02d}</div>
+          <div class="nr-row-body">
+            <div class="nr-row-top">
+              <span class="nr-row-name">{esc(r.get('اسم رب الأسرة', ''))}</span>
+              <span class="nr-row-card">{esc(card_col_name)}: {esc(r.get(card_col_name, ''))}</span>
+            </div>
+            <div class="nr-bar-wrap">
+              <span class="nr-bar-nums">{esc(eligible)} مستحق</span>
+              <div class="nr-bar"><span class="nr-bar-eligible" style="width:{eligible_pct}%"></span><span class="nr-bar-withheld" style="width:{withheld_pct}%"></span></div>
+              <span class="nr-bar-nums">{esc(withheld)} محجوب / {esc(total)} كلي</span>
+              <span class="nr-row-blank"></span>
+            </div>
+            {status_pill}
           </div>
-          <div class="nr-card-name">{esc(r.get('اسم رب الأسرة', ''))}</div>
-          <div class="nr-card-cardnum">{esc(card_col_name)}: {esc(r.get(card_col_name, ''))}</div>
-          <div class="nr-card-stats">
-            <div class="nr-card-stat"><span class="num">{esc(r.get('الأفراد الكلية', ''))}</span><span class="lbl">الكلية</span></div>
-            <div class="nr-card-stat eligible"><span class="num">{esc(r.get('الأفراد المستحقة', ''))}</span><span class="lbl">المستحقة</span></div>
-            <div class="nr-card-stat withheld"><span class="num">{esc(r.get('الأفراد المحجوبين', ''))}</span><span class="lbl">المحجوبين</span></div>
-          </div>
-          {status_pill}
         </div>"""
 
     section_class = "nr-section with-break" if with_break else "nr-section"
     return f"""
     <section class="{section_class}" style="{style_vars}">
+      <div class="nr-topbar"></div>
       <div class="nr-masthead">
-        <div class="nr-seal">{icon}</div>
+        <div class="nr-eyebrow">{icon} {badge_label}</div>
         <h1>{title}</h1>
         <div class="nr-sub">{subtitle}</div>
         <div class="nr-agent-badge">الوكيل: {agent_label}</div>
       </div>
-      <div class="nr-stats">
+      <hr class="nr-hr">
+      <div class="nr-stats-row">
         <div class="nr-stat"><span class="num">{len(rows)}</span><span class="lbl">عدد العوائل ({badge_label})</span></div>
         <div class="nr-stat"><span class="num">{total_people}</span><span class="lbl">إجمالي الأفراد</span></div>
         <div class="nr-stat"><span class="num">{total_eligible}</span><span class="lbl">الأفراد المستحقة</span></div>
         <div class="nr-stat"><span class="num">{total_withheld}</span><span class="lbl">الأفراد المحجوبين</span></div>
       </div>
-      <div class="nr-cards-grid">{cards_html}</div>
+      <div class="nr-rows">{rows_html}</div>
       <div class="nr-footer">
         <span>نظام المقارنة الشامل والذكي — وكيل رقم {agent_label}</span>
         <span>عدد السجلات: {len(rows)}</span>
@@ -1544,8 +1560,8 @@ def _build_category_pdf_html_noir(rows, cat, card_col_name, agent_label):
     return _wrap_pdf_document(cat["title"], section, css=_PDF_CSS_NOIR)
 
 def _legend_section_html_noir():
-    """نفس صفحة التوضيح لكن بتصميم "الفخم" — فقاعة الحالة بنفس لونها
-    الحقيقي، وعنوان الصفحة بلافتة كحلية/ذهبية."""
+    """نفس صفحة التوضيح لكن بتصميم دفتر الأستاذ التحريري — فقاعة الحالة
+    بنفس لونها الحقيقي، والعنوان بخط علوي أخضر رفيع بدون أي صندوق."""
     rows_html = "".join(
         f'<tr><td class="legend-sample"><span class="status-pill" style="background:{CATEGORY_DEFS_BY_KEY[key]["accent_soft"]}; '
         f'border-color:{_rgba(CATEGORY_DEFS_BY_KEY[key]["accent"], 0.45)}; color:{CATEGORY_DEFS_BY_KEY[key]["accent_dark"]};">'
@@ -1554,17 +1570,17 @@ def _legend_section_html_noir():
     )
     return f"""
     <section class="nr-section with-break">
+      <div class="nr-topbar"></div>
       <div class="nr-masthead">
-        <div class="nr-seal">📖</div>
+        <div class="nr-eyebrow">📖 دليل الحالات</div>
         <h1>دليل شرح حالات التقرير</h1>
         <div class="nr-sub">معنى كل حالة تظهر بعمود "الإحالة" داخل التقارير</div>
       </div>
-      <div class="nr-table-wrap">
-        <table class="legend-table">
-          <thead><tr><th>الحالة كما تظهر بالتقرير</th><th>الشرح</th></tr></thead>
-          <tbody>{rows_html}</tbody>
-        </table>
-      </div>
+      <hr class="nr-hr">
+      <table class="legend-table">
+        <thead><tr><th>الحالة كما تظهر بالتقرير</th><th>الشرح</th></tr></thead>
+        <tbody>{rows_html}</tbody>
+      </table>
     </section>"""
 
 def _colgroup_html_canva(show_referral=None):
