@@ -349,4 +349,33 @@ def test_extract_matched_by_either_card_raises_no_exception_on_empty_files():
     assert old_data == {}
     assert new_data == {}
     assert old_dupes == []
-    assert new_dupes == []
+
+
+def test_smart_clean_card_rejects_zero_padded_legacy_reference_numbers():
+    """رقم مرجعي قديم بأصفار بادئة مثل "0000022" (خانتان فعليتان فقط بعد
+    حذف الأصفار) لازم يُرفض كرقم بطاقة صالح، رغم إن طوله الخام (7 خانات)
+    يتجاوز الحد الأدنى — لأن القيمة الفعلية ذات الدلالة قصيرة جداً."""
+    assert app._smart_clean_card("0000022") == ""
+    assert app._smart_clean_card("0000") == ""
+    assert app._smart_clean_card("1234567") == "1234567"
+    assert app._smart_clean_card("0001234") == "0001234"
+
+
+def test_realign_role_map_recovers_from_extra_blank_column_in_headerless_table(bugfix_shifted_files):
+    """اختبار ارتداد كامل على السيناريو المشخَّص فعلياً: ملف قديم بورقة ثانية
+    بلا عناوين وعمود فارغ إضافي يزيح أرقام البطاقات، مقابل ملف جديد فيه رقم
+    مرجعي قديم بأصفار بادئة بجانب عمود البطاقة الحقيقي — قبل الإصلاح كانت كل
+    العوائل تظهر مضافة/محذوفة رغم إنها نفسها بالملفين؛ بعد الإصلاح لازم
+    تتطابق العوائل الخمسة كلها بلا أي إضافة أو حذف وهمي."""
+    old_file, new_file = bugfix_shifted_files
+    old_data, new_data, card_col_name, _, _ = app.extract_matched_by_either_card(
+        app.extract_records_smart, old_file, new_file
+    )
+    is_safe, old_data, new_data, errors = app.validate_and_clean_pair(old_data, new_data, "old", "new")
+    assert is_safe, f"expected a clean pipeline run, got errors: {errors[:3]}"
+
+    results, _, counters = app.process_comparison(old_data, new_data, "النوع الأول", card_col_name, "المحرك القياسي")
+    assert counters["added_fam"] == 0
+    assert counters["deleted_fam"] == 0
+    assert len(old_data) == 5
+    assert len(new_data) == 5

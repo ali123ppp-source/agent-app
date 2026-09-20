@@ -285,13 +285,97 @@ def _smart_detect_header_map(rows_data, max_scan=3):
 
 def _smart_clean_card(value):
     v = normalize_digits(str(value).strip())
-    if not v.isdigit() or len(v) < 4:
+    if not v.isdigit():
+        return ""
+    significant = v.lstrip("0") or "0"
+    if len(significant) < 4:
         return ""
     return v
 
 def _smart_to_int(value):
     digits = "".join(filter(str.isdigit, str(value)))
     return int(digits) if digits else 0
+
+def _index_looks_like_name(rows, idx, start_idx, sample_size=8):
+    """يتحقق إن كان عمود معيّن (بفهرس idx) يحوي فعلاً أسماء عربية عبر عيّنة صفوف."""
+    checked = ok = 0
+    for r_idx in range(start_idx, min(start_idx + sample_size * 3, len(rows))):
+        cells = rows[r_idx]
+        if idx > len(cells) - 1:
+            continue
+        val = cells[idx].strip()
+        if not val:
+            continue
+        checked += 1
+        if any('؀' <= ch <= 'ۿ' for ch in val) and not val.replace(" ", "").isdigit():
+            ok += 1
+        if checked >= sample_size:
+            break
+    return checked > 0 and (ok / checked) >= 0.6
+
+def _index_looks_like_card(rows, idx, start_idx, sample_size=8):
+    """يتحقق إن كان عمود معيّن (بفهرس idx) يحوي فعلاً أرقام بطاقات (وليس أرقام صغيرة
+    كالتسلسل أو عدد الأفراد) عبر عيّنة صفوف، بالاعتماد على عدد الخانات ذات الدلالة."""
+    checked = ok = 0
+    for r_idx in range(start_idx, min(start_idx + sample_size * 3, len(rows))):
+        cells = rows[r_idx]
+        if idx > len(cells) - 1:
+            continue
+        val = normalize_digits(cells[idx].strip())
+        if not val:
+            continue
+        checked += 1
+        significant = val.lstrip("0") or "0"
+        if val.isdigit() and len(significant) >= 4:
+            ok += 1
+        if checked >= sample_size:
+            break
+    return checked > 0 and (ok / checked) >= 0.6
+
+def _role_map_validation_score(role_map, rows, start_idx):
+    """نسبة الحقول الحرجة (الاسم وأرقام البطاقات) اللي تحتوي فعلاً على محتوى
+    من الشكل المتوقع بهذا role_map على بيانات الجدول — تُستخدم لمقارنة أكثر
+    من احتمال إزاحة واختيار الأفضل."""
+    name_idx = role_map.get("name")
+    if name_idx is None or name_idx < 0:
+        return -1
+    total_fields, ok_fields = 1, (1 if _index_looks_like_name(rows, name_idx, start_idx) else 0)
+    for key in ("old_card", "new_card", "card_generic"):
+        idx = role_map.get(key)
+        if idx is None:
+            continue
+        total_fields += 1
+        if idx >= 0 and _index_looks_like_card(rows, idx, start_idx):
+            ok_fields += 1
+    return ok_fields / total_fields
+
+def _shift_role_map_at_pivot(role_map, pivot, delta):
+    """يحاكي أثر عمود إضافي (delta=+1) أو محذوف (delta=-1) عند موقع pivot على
+    فهارس role_map: كل فهرس بعد الـ pivot ينزاح، وكل فهرس قبله يبقى كما هو —
+    هذا بالضبط أثر عمود فارغ/ناقص بمنتصف صف بدل انزياح موحّد لكل الأعمدة."""
+    return {k: (v + delta if v >= pivot else v) for k, v in role_map.items()}
+
+def _realign_role_map_for_table(role_map, rows, start_idx):
+    """عند إعادة استخدام role_map من جدول/ورقة سابقة لجدول لاحق بلا صف عناوين خاص
+    به (مثل ورقة ثانية بنفس الملف)، يتحقق من صحة الفهارس فعلياً على بيانات هذا
+    الجدول، ويصحح أي إزاحة ناتجة عن عمود إضافي/ناقص عبر تجربة كل موقع ممكن
+    لإدخال/حذف عمود واختيار الاحتمال الذي يطابق شكل المحتوى المتوقع بأفضل شكل."""
+    baseline = _role_map_validation_score(role_map, rows, start_idx)
+    if baseline >= 0.999:
+        return role_map
+
+    best_map, best_score = role_map, baseline
+    max_idx = max(role_map.values()) if role_map else 0
+    for pivot in range(0, max_idx + 2):
+        for delta in (1, -1):
+            candidate = _shift_role_map_at_pivot(role_map, pivot, delta)
+            if any(v < 0 for v in candidate.values()):
+                continue
+            score = _role_map_validation_score(candidate, rows, start_idx)
+            if score > best_score + 1e-9:
+                best_map, best_score = candidate, score
+
+    return best_map if best_score > baseline else role_map
 
 def _read_tables_rows(file_obj):
     """يقرأ كل الجداول/الأوراق بملف (docx أو xlsx) كقوائم صفوف نصية خام،
@@ -434,7 +518,9 @@ def extract_records_smart(file_obj, card_type="old"):
             last_role_map = role_map
         elif last_role_map is not None:
             # جدول/ورقة تكمل بيانات سابقة دون تكرار صف العناوين (مثل الورقة الثانية في نفس الملف)
-            role_map = last_role_map
+            # نتحقق من صحة الفهارس فعلياً على هذا الجدول ونصححها لو انزاحت بسبب
+            # عمود إضافي/ناقص يختلف به تخطيط هذه الورقة عن سابقتها
+            role_map = _realign_role_map_for_table(last_role_map, rows, 0)
             header_row_idx = -1
         else:
             continue

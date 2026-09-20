@@ -46,3 +46,14 @@ def agent921_mismatched_files():
     old = make_file(os.path.join(FIXTURES_DIR, "agent921_mismatched_old.xlsx"), "921.pdf_5.xlsx")
     new = make_file(os.path.join(FIXTURES_DIR, "agent921_mismatched_new.docx"), "921.pdf_1.docx")
     return old, new
+
+
+@pytest.fixture
+def bugfix_shifted_files():
+    """زوج ملفات مصطنع يحاكي بالضبط سبب ظهور "الكل مضاف/محجوب": ملف xlsx
+    قديم بورقتين (الأولى بعناوين، والثانية بلا عناوين وبعمود فارغ إضافي يزيح
+    عمودي البطاقة)، وملف docx جديد فيه عمود مرجعي قديم بأصفار بادئة
+    ("0000022") بجانب عمود "البطاقة الجديدة" الحقيقي."""
+    old = make_file(os.path.join(FIXTURES_DIR, "bugfix_shifted_old.xlsx"), "shifted_old.xlsx")
+    new = make_file(os.path.join(FIXTURES_DIR, "bugfix_shifted_new.docx"), "shifted_new.docx")
+    return old, new
