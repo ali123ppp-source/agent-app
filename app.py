@@ -1821,9 +1821,15 @@ def create_category_pdf_reports(df_results_full, card_col_name, new_file_name, t
     """يبني تقرير PDF أنيق مستقل لكل حالة من حالات المتغيرات المكتشفة
     (مضافة، منقولة، حجب كلي/جزئي، رفع حجب، زيادة/نقصان أفراد أو مستحقين،
     تغيير اسم، تحديث عام)، ويُرجع فقط الحالات التي فعلاً لها سجلات ضمن
-    نتيجة المقارنة الحالية. template: "glass" (الافتراضي) أو "canva"."""
+    نتيجة المقارنة الحالية. template: "glass" (الافتراضي) أو "canva" أو
+    "noir" (تصميم أزرق مؤسسي بشريط معلومات ومربعات إحصائية ملونة)."""
     agent_label = _derive_agent_label(new_file_name)
-    builder = _build_category_pdf_html_canva if template == "canva" else _build_category_pdf_html
+    if template == "canva":
+        builder = _build_category_pdf_html_canva
+    elif template == "noir":
+        builder = _build_category_pdf_html_noir
+    else:
+        builder = _build_category_pdf_html
     reports = []
     for cat, rows in _matched_categories(df_results_full):
         pdf_bytes = WeasyHTML(string=builder(rows, cat, card_col_name, agent_label)).write_pdf()
@@ -1840,7 +1846,8 @@ def create_category_pdf_reports(df_results_full, card_col_name, new_file_name, t
 def create_combined_pdf_report(df_results_full, card_col_name, new_file_name, template="glass"):
     """يبني ملف PDF واحد يجمع كل حالات المتغيرات المكتشفة معاً: صفحة غلاف
     تلخّص أعداد كل حالة، تليها كل حالة بقسمها المستقل بنفس تصميمها ولونها
-    (كل حالة تبدأ بصفحة جديدة). template: "glass" (الافتراضي) أو "canva"."""
+    (كل حالة تبدأ بصفحة جديدة). template: "glass" (الافتراضي) أو "canva"
+    أو "noir" (تصميم أزرق مؤسسي)."""
     agent_label = _derive_agent_label(new_file_name)
     matched = _matched_categories(df_results_full)
     if not matched:
@@ -1849,7 +1856,29 @@ def create_combined_pdf_report(df_results_full, card_col_name, new_file_name, te
     cover_agent_label = esc(agent_label)
     cover_accent, cover_soft, cover_dark = "#154360", "#EBF5FB", "#0B2E4F"
 
-    if template == "canva":
+    if template == "noir":
+        stats_items = [("✨", len(rows), cat["badge_label"]) for cat, rows in matched]
+        cover_stats = _noir_stats_grid_html(stats_items)
+        cover_html = f"""
+        <section class="nr-section">
+          <div class="nr-cover">
+            <div class="nr-header-icon">📜</div>
+            <h1>التقرير الشامل لكل حالات المتغيرات</h1>
+            <div class="nr-cover-sub">نظام المقارنة الشامل والذكي</div>
+            <div class="nr-infobar">
+              <div class="nr-info-chip"><span class="ic-icon">👤</span><span class="ic-label">الوكيل</span> <span class="ic-value">{cover_agent_label}</span></div>
+              <div class="nr-info-chip"><span class="ic-icon">📅</span><span class="ic-label">تاريخ التقرير</span> <span class="ic-value">{esc(datetime.now().strftime('%Y-%m-%d'))}</span></div>
+            </div>
+            {cover_stats}
+          </div>
+        </section>"""
+        legend_html = _legend_section_html_noir()
+        sections_html = "".join(
+            _category_section_html_noir(rows, cat, card_col_name, agent_label, with_break=True)
+            for cat, rows in matched
+        )
+        pdf_bytes = WeasyHTML(string=_wrap_pdf_document("التقرير الشامل", cover_html + legend_html + sections_html, css=_PDF_CSS_NOIR)).write_pdf()
+    elif template == "canva":
         cover_style = (
             f"--accent:{cover_accent}; --accent-soft:{cover_soft}; --accent-dark:{cover_dark};"
             f"--card-border:{_rgba(cover_accent, 0.30)}; --grid-line:{_rgba(cover_dark, 0.045)};"
@@ -2340,8 +2369,9 @@ def main():
         if predict_note:
             st.caption(predict_note)
 
-    pdf_template_ui = st.radio("🎨 نمط تصميم تقارير PDF:", ["الافتراضي (زجاجي)", "كانفا", "النموذج الأصلي (جدول واحد شامل)"], horizontal=True)
+    pdf_template_ui = st.radio("🎨 نمط تصميم تقارير PDF:", ["الافتراضي (زجاجي)", "كانفا", "الرسمي (مؤسسي أزرق)", "النموذج الأصلي (جدول واحد شامل)"], horizontal=True)
     if pdf_template_ui == "كانفا": pdf_template = "canva"
+    elif pdf_template_ui == "الرسمي (مؤسسي أزرق)": pdf_template = "noir"
     elif pdf_template_ui == "النموذج الأصلي (جدول واحد شامل)": pdf_template = "classic"
     else: pdf_template = "glass"
 
