@@ -1440,45 +1440,91 @@ _PDF_CSS_CANVA = """
 _PDF_CSS_NOIR = """
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; font-family: 'Cairo', 'Tajawal', 'Arial', sans-serif; color: #1F2937; background: #fff; }
-  @page { size: A4; margin: 16mm 14mm 16mm 14mm; }
+  @page { size: A4; margin: 12mm 10mm 14mm 10mm; }
   .nr-section.with-break { page-break-before: always; }
-  .nr-masthead { text-align: center; padding-bottom: 14px; border-bottom: 2.5px solid #6B1F2A; margin-bottom: 18px; }
-  .nr-emblem { font-size: 26px; margin-bottom: 6px; }
-  .nr-masthead h1 { font-size: 23px; font-weight: 800; color: #1F2937; margin: 0 0 6px; }
-  .nr-masthead .nr-sub { font-size: 11.5px; color: #6B7280; font-weight: 500; margin: 0 0 8px; }
-  .nr-masthead .nr-agent { font-size: 12px; color: #6B1F2A; font-weight: 700; }
+  .nr-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 14px; border-bottom: 3px solid #1B4F91; margin-bottom: 14px; }
+  .nr-header-icon { width: 52px; height: 52px; line-height: 52px; text-align: center; font-size: 26px; border-radius: 50%; background: #EAF2FB; flex-shrink: 0; }
+  .nr-header-text { flex: 1; text-align: center; }
+  .nr-header-text h1 { font-size: 19px; font-weight: 800; color: #1B4F91; margin: 0 0 3px; }
+  .nr-header-text .nr-sub { font-size: 11px; color: #6B7280; font-weight: 600; margin: 0; }
+  .nr-header-date { font-size: 9.5px; color: #6B7280; font-weight: 600; flex-shrink: 0; white-space: nowrap; }
+  .nr-infobar { display: flex; background: linear-gradient(90deg, #1B4F91, #2E6DB4); border-radius: 10px; padding: 10px 16px; margin-bottom: 16px; gap: 8px; }
+  .nr-info-chip { flex: 1; text-align: center; color: #fff; }
+  .nr-info-chip .ic-icon { font-size: 13px; margin-left: 4px; }
+  .nr-info-chip .ic-label { font-size: 9.5px; opacity: 0.85; font-weight: 600; }
+  .nr-info-chip .ic-value { font-size: 12px; font-weight: 800; margin-right: 4px; }
+  .nr-stats-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  .nr-stat-box { flex: 1; min-width: 100px; text-align: center; border-radius: 10px; padding: 10px 6px; border: 1px solid var(--sb-border); background: var(--sb-bg); }
+  .nr-stat-box .sb-icon { font-size: 16px; display: block; margin-bottom: 2px; }
+  .nr-stat-box .sb-num { display: block; font-size: 19px; font-weight: 900; color: var(--sb-fg); }
+  .nr-stat-box .sb-lbl { font-size: 9px; color: var(--sb-fg); font-weight: 700; opacity: 0.9; }
   table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12.5px; }
-  thead th { border-bottom: 2px solid #6B1F2A; color: #6B1F2A; font-weight: 800; padding: 9px 4px; text-align: center; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  thead th { background: #1B4F91; color: #fff; font-weight: 700; padding: 9px 4px; text-align: center; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   tbody td { padding: 9px 5px; text-align: center; border-bottom: 1px solid #E5E7EB; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  tbody tr:nth-child(even) { background: #F5F9FD; }
   tbody tr:last-child td { border-bottom: none; }
   tbody tr { page-break-inside: avoid; }
-  .nr-idx { color: #6B1F2A; font-weight: 700; }
+  .nr-idx { color: #1B4F91; font-weight: 700; }
   .nr-name { text-align: right; font-weight: 700; color: #1F2937; font-size: 12px; white-space: normal; overflow: visible; text-overflow: clip; }
   .nr-name .name-text { line-height: 1.3; }
   .nr-status-line { margin-top: 3px; font-size: 10px; font-weight: 700; white-space: normal; }
-  .nr-mono { font-family: 'Consolas', monospace; direction: ltr; color: #1F2937; font-weight: 700; font-size: 13.5px; }
+  .nr-mono { font-family: 'Consolas', monospace; direction: ltr; color: #1B4F91; font-weight: 700; font-size: 13.5px; }
   .nr-num { font-weight: 700; color: #1F2937; font-size: 13.5px; }
   .nr-eligible { color: #1B6E3C; }
   .nr-withheld { color: #A93226; }
   .th-blank { white-space: normal !important; font-size: 8.5px !important; line-height: 1.2; }
   .blank-chip { display: block; margin: 0 auto; width: 85%; height: 28px; border: 1px solid #9CA3AF; border-radius: 4px; background: #fff; }
   .nr-footer { margin-top: 14px; padding-top: 8px; border-top: 1px solid #E5E7EB; display: flex; justify-content: space-between; font-size: 10px; color: #6B7280; font-weight: 600; }
-  .nr-cover { text-align: center; padding: 90px 30px; }
-  .nr-cover .nr-emblem { font-size: 46px; margin-bottom: 16px; }
-  .nr-cover h1 { font-size: 27px; font-weight: 800; color: #1F2937; margin: 0 0 16px; border-bottom: 2.5px solid #6B1F2A; display: inline-block; padding-bottom: 14px; }
-  .nr-cover .nr-cover-sub { color: #6B7280; font-size: 13px; margin: 0 0 10px; }
-  .nr-cover .nr-agent { font-size: 13px; color: #6B1F2A; font-weight: 700; display: block; }
+  .nr-cover { text-align: center; padding: 50px 30px; }
+  .nr-cover .nr-header-icon { display: inline-block; margin-bottom: 16px; width: 72px; height: 72px; line-height: 72px; font-size: 34px; }
+  .nr-cover h1 { font-size: 26px; font-weight: 800; color: #1B4F91; margin: 0 0 8px; }
+  .nr-cover .nr-cover-sub { color: #6B7280; font-size: 13px; margin: 0 0 24px; }
+  .nr-cover .nr-infobar { display: inline-flex; width: 420px; max-width: 100%; margin-bottom: 24px; }
+  .nr-cover .nr-stats-grid { display: inline-flex; width: 480px; max-width: 100%; }
   .legend-table { width: 100%; border-collapse: collapse; table-layout: auto; font-size: 13px; }
-  .legend-table thead th { border-bottom: 2px solid #6B1F2A; color: #6B1F2A; font-weight: 800; padding: 10px; text-align: center; font-size: 12px; }
+  .legend-table thead th { background: #1B4F91; color: #fff; font-weight: 700; padding: 10px; text-align: center; font-size: 12px; }
   .legend-table tbody td { padding: 12px 10px; border-bottom: 1px solid #E5E7EB; text-align: right; vertical-align: middle; }
   .legend-sample { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; text-align: center !important; font-weight: 700; }
   .legend-explain { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; line-height: 1.6; }
 """
 
+# ألوان مربعات الإحصائيات (زرقاء/خضراء/بنفسجية/برتقالية) — نفس روح
+# الصورة المرجعية اللي رسلها المستخدم، بدون أي شعار أو اسم جهة حكومية
+# رسمية (هذا النظام مو تابع لوزارة أو دائرة حكومية فعلية).
+_NOIR_STAT_PALETTE = [
+    ("#EAF2FB", "#1B4F91"),
+    ("#EAFAF1", "#1E8449"),
+    ("#F4ECF7", "#7D3C98"),
+    ("#FEF5E7", "#CA6F1E"),
+]
+
+def _noir_stats_grid_html(items):
+    """items: قائمة (أيقونة، رقم، تسمية) — يلوّن كل مربع بلون مختلف
+    بالتدوير على _NOIR_STAT_PALETTE (نفس فكرة شبكة المربعات الملونة
+    بالصورة المرجعية)."""
+    boxes = ""
+    for idx, (icon, num, lbl) in enumerate(items):
+        bg, fg = _NOIR_STAT_PALETTE[idx % len(_NOIR_STAT_PALETTE)]
+        boxes += (
+            f'<div class="nr-stat-box" style="--sb-bg:{bg}; --sb-fg:{fg}; --sb-border:{_rgba(fg, 0.25)};">'
+            f'<span class="sb-icon">{icon}</span><span class="sb-num">{esc(num)}</span><span class="sb-lbl">{esc(lbl)}</span></div>'
+        )
+    return f'<div class="nr-stats-grid">{boxes}</div>'
+
 def _category_section_html_noir(rows, cat, card_col_name, agent_label, with_break=False):
     agent_label = esc(agent_label)
     title, subtitle = esc(cat["title"]), esc(cat["subtitle"].format(agent=agent_label))
-    icon, show_referral = cat["icon"], cat["show_referral"]
+    badge_label, icon, show_referral = esc(cat["badge_label"]), cat["icon"], cat["show_referral"]
+
+    total_people = sum(int(r.get("الأفراد الكلية", 0) or 0) for r in rows)
+    total_eligible = sum(int(r.get("الأفراد المستحقة", 0) or 0) for r in rows)
+    total_withheld = sum(int(r.get("الأفراد المحجوبين", 0) or 0) for r in rows)
+    stats_grid = _noir_stats_grid_html([
+        ("👪", len(rows), f"عدد العوائل ({badge_label})"),
+        ("👥", total_people, "إجمالي الأفراد"),
+        ("✅", total_eligible, "الأفراد المستحقة"),
+        ("🚫", total_withheld, "الأفراد المحجوبين"),
+    ])
 
     rows_html = ""
     for i, r in enumerate(rows, start=1):
@@ -1497,12 +1543,20 @@ def _category_section_html_noir(rows, cat, card_col_name, agent_label, with_brea
     section_class = "nr-section with-break" if with_break else "nr-section"
     return f"""
     <section class="{section_class}">
-      <div class="nr-masthead">
-        <div class="nr-emblem">{icon}</div>
-        <h1>{title}</h1>
-        <div class="nr-sub">{subtitle}</div>
-        <div class="nr-agent">الوكيل: {agent_label}</div>
+      <div class="nr-header">
+        <div class="nr-header-icon">{icon}</div>
+        <div class="nr-header-text">
+          <h1>{title}</h1>
+          <p class="nr-sub">{subtitle}</p>
+        </div>
+        <div class="nr-header-date">تاريخ التقرير<br>{esc(datetime.now().strftime('%Y-%m-%d'))}</div>
       </div>
+      <div class="nr-infobar">
+        <div class="nr-info-chip"><span class="ic-icon">👤</span><span class="ic-label">الوكيل</span> <span class="ic-value">{agent_label}</span></div>
+        <div class="nr-info-chip"><span class="ic-icon">🏷️</span><span class="ic-label">التصنيف</span> <span class="ic-value">{badge_label}</span></div>
+        <div class="nr-info-chip"><span class="ic-icon">📋</span><span class="ic-label">عدد السجلات</span> <span class="ic-value">{len(rows)}</span></div>
+      </div>
+      {stats_grid}
       <table>
         {_colgroup_html()}
         <thead><tr><th>ت</th><th>{esc(card_col_name)}</th><th>اسم رب الأسرة</th><th class="th-blank">حقل فارغ</th><th>الكلية</th><th>المستحقة</th><th>المحجوبين</th></tr></thead>
@@ -1519,9 +1573,9 @@ def _build_category_pdf_html_noir(rows, cat, card_col_name, agent_label):
     return _wrap_pdf_document(cat["title"], section, css=_PDF_CSS_NOIR)
 
 def _legend_section_html_noir():
-    """نفس صفحة التوضيح لكن بتصميم رسمي بحت — نص الحالة ملوّن بدون أي
-    فقاعة أو صندوق (نفس تلوين _classic_status_html)، وعنوان بخط سفلي
-    عنّابي رفيع بدل أي شارة أو عداد."""
+    """نفس صفحة التوضيح لكن بتصميم "الوكالة" الأزرق — نص الحالة ملوّن
+    بدون فقاعة (نفس تلوين _classic_status_html)، وعنوان بنفس هوية
+    اللافتة الزرقاء وشريط المعلومات المستخدم بباقي صفحات هذا النموذج."""
     rows_html = "".join(
         f'<tr><td class="legend-sample">{_classic_status_html(sample)}</td>'
         f'<td class="legend-explain">{esc(explanation)}</td></tr>'
@@ -1529,10 +1583,13 @@ def _legend_section_html_noir():
     )
     return f"""
     <section class="nr-section with-break">
-      <div class="nr-masthead">
-        <div class="nr-emblem">📖</div>
-        <h1>دليل شرح حالات التقرير</h1>
-        <div class="nr-sub">معنى كل حالة تظهر بعمود "الإحالة" داخل التقارير</div>
+      <div class="nr-header">
+        <div class="nr-header-icon">📖</div>
+        <div class="nr-header-text">
+          <h1>دليل شرح حالات التقرير</h1>
+          <p class="nr-sub">معنى كل حالة تظهر بعمود "الإحالة" داخل التقارير</p>
+        </div>
+        <div class="nr-header-date">تاريخ التقرير<br>{esc(datetime.now().strftime('%Y-%m-%d'))}</div>
       </div>
       <table class="legend-table">
         <thead><tr><th>الحالة كما تظهر بالتقرير</th><th>الشرح</th></tr></thead>
