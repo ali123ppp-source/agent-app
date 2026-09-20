@@ -1440,115 +1440,74 @@ _PDF_CSS_CANVA = """
 _PDF_CSS_NOIR = """
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; font-family: 'Cairo', 'Tajawal', 'Arial', sans-serif; color: #1F2937; background: #fff; }
-  @page { size: A4; margin: 14mm 14mm 16mm 14mm; }
+  @page { size: A4; margin: 16mm 14mm 16mm 14mm; }
   .nr-section.with-break { page-break-before: always; }
-  .nr-topbar { height: 5px; background: #14532D; border-radius: 3px; margin-bottom: 20px; }
-  .nr-masthead { text-align: center; margin-bottom: 4px; }
-  .nr-eyebrow { font-size: 11px; letter-spacing: 1.5px; color: #14532D; font-weight: 700; margin-bottom: 8px; }
-  .nr-masthead h1 { font-size: 26px; font-weight: 800; color: #1F2937; margin: 0 0 8px; }
-  .nr-masthead .nr-sub { font-size: 12.5px; color: #6B7280; font-weight: 500; margin: 0 0 14px; }
-  .nr-agent-badge { display: inline-block; border: 1.5px solid #14532D; color: #14532D; font-weight: 700; font-size: 11.5px; padding: 5px 20px; border-radius: 999px; }
-  .nr-hr { border: none; border-top: 1px solid #D9D5C8; margin: 18px 0; }
-  .nr-stats-row { display: flex; justify-content: space-around; margin-bottom: 8px; }
-  .nr-stat { text-align: center; padding: 0 14px; border-right: 1px solid #D9D5C8; flex: 1; }
-  .nr-stat:last-child { border-right: none; }
-  .nr-stat .num { display: block; font-size: 24px; font-weight: 900; color: #14532D; }
-  .nr-stat .lbl { font-size: 9.5px; color: #6B7280; font-weight: 600; }
-  .status-pills { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
-  .status-pill { display: inline-block; padding: 2px 10px; border-radius: 999px; background: var(--pill-bg); border: 1px solid var(--pill-border); color: var(--accent-dark); font-size: 9px; font-weight: 600; line-height: 1.6; white-space: normal; }
-  .nr-rows { margin-top: 14px; }
-  .nr-row { display: flex; align-items: flex-start; gap: 12px; padding: 13px 0; border-bottom: 1px solid #E9E6DC; page-break-inside: avoid; }
-  .nr-row-num { font-size: 20px; font-weight: 900; color: #C9C4B4; min-width: 30px; text-align: center; }
-  .nr-row-body { flex: 1; min-width: 0; }
-  .nr-row-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 5px; }
-  .nr-row-name { font-size: 14px; font-weight: 800; color: #1F2937; }
-  .nr-row-card { font-family: 'Consolas', monospace; direction: ltr; font-size: 11.5px; color: #6B7280; font-weight: 700; white-space: nowrap; }
-  .nr-bar-wrap { display: flex; align-items: center; gap: 8px; }
-  .nr-bar { flex: 1; height: 9px; border-radius: 5px; background: #EDEBE2; overflow: hidden; display: flex; direction: ltr; }
-  .nr-bar-eligible { background: #14532D; height: 100%; }
-  .nr-bar-withheld { background: #B23A32; height: 100%; }
-  .nr-bar-nums { font-size: 10px; color: #6B7280; font-weight: 600; white-space: nowrap; }
-  .nr-row-blank { width: 40px; height: 17px; border: 1px solid #C9C4B4; border-radius: 5px; background: #fff; flex-shrink: 0; }
-  .nr-footer { margin-top: 16px; padding-top: 10px; border-top: 1px solid #14532D; display: flex; justify-content: space-between; font-size: 10.5px; color: #6B7280; font-weight: 600; }
-  .nr-cover { text-align: center; padding: 50px 20px; }
-  .nr-cover .nr-topbar { margin-bottom: 26px; }
-  .nr-cover h1 { font-size: 30px; font-weight: 800; color: #1F2937; margin: 0 0 10px; }
-  .nr-cover .nr-cover-sub { color: #6B7280; font-size: 13px; margin-bottom: 22px; }
-  .nr-cover .nr-agent-badge { margin-bottom: 36px; }
-  .nr-cover .nr-summary-grid { display: flex; flex-wrap: wrap; justify-content: center; }
-  .nr-cover .nr-summary-card { width: 130px; padding: 0 14px; border-right: 1px solid #D9D5C8; }
-  .nr-cover .nr-summary-card:last-child { border-right: none; }
-  .nr-cover .nr-summary-card .num { display: block; font-size: 30px; font-weight: 900; color: #14532D; }
-  .nr-cover .nr-summary-card .lbl { font-size: 11px; color: #6B7280; font-weight: 600; }
+  .nr-masthead { text-align: center; padding-bottom: 14px; border-bottom: 2.5px solid #6B1F2A; margin-bottom: 18px; }
+  .nr-emblem { font-size: 26px; margin-bottom: 6px; }
+  .nr-masthead h1 { font-size: 23px; font-weight: 800; color: #1F2937; margin: 0 0 6px; }
+  .nr-masthead .nr-sub { font-size: 11.5px; color: #6B7280; font-weight: 500; margin: 0 0 8px; }
+  .nr-masthead .nr-agent { font-size: 12px; color: #6B1F2A; font-weight: 700; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12.5px; }
+  thead th { border-bottom: 2px solid #6B1F2A; color: #6B1F2A; font-weight: 800; padding: 9px 4px; text-align: center; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  tbody td { padding: 9px 5px; text-align: center; border-bottom: 1px solid #E5E7EB; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr { page-break-inside: avoid; }
+  .nr-idx { color: #6B1F2A; font-weight: 700; }
+  .nr-name { text-align: right; font-weight: 700; color: #1F2937; font-size: 12px; white-space: normal; overflow: visible; text-overflow: clip; }
+  .nr-name .name-text { line-height: 1.3; }
+  .nr-status-line { margin-top: 3px; font-size: 10px; font-weight: 700; white-space: normal; }
+  .nr-mono { font-family: 'Consolas', monospace; direction: ltr; color: #1F2937; font-weight: 700; font-size: 13.5px; }
+  .nr-num { font-weight: 700; color: #1F2937; font-size: 13.5px; }
+  .nr-eligible { color: #1B6E3C; }
+  .nr-withheld { color: #A93226; }
+  .th-blank { white-space: normal !important; font-size: 8.5px !important; line-height: 1.2; }
+  .blank-chip { display: block; margin: 0 auto; width: 85%; height: 28px; border: 1px solid #9CA3AF; border-radius: 4px; background: #fff; }
+  .nr-footer { margin-top: 14px; padding-top: 8px; border-top: 1px solid #E5E7EB; display: flex; justify-content: space-between; font-size: 10px; color: #6B7280; font-weight: 600; }
+  .nr-cover { text-align: center; padding: 90px 30px; }
+  .nr-cover .nr-emblem { font-size: 46px; margin-bottom: 16px; }
+  .nr-cover h1 { font-size: 27px; font-weight: 800; color: #1F2937; margin: 0 0 16px; border-bottom: 2.5px solid #6B1F2A; display: inline-block; padding-bottom: 14px; }
+  .nr-cover .nr-cover-sub { color: #6B7280; font-size: 13px; margin: 0 0 10px; }
+  .nr-cover .nr-agent { font-size: 13px; color: #6B1F2A; font-weight: 700; display: block; }
   .legend-table { width: 100%; border-collapse: collapse; table-layout: auto; font-size: 13px; }
-  .legend-table thead th { background: #fff; color: #14532D; font-weight: 800; padding: 10px; text-align: center; font-size: 12px; border-bottom: 2px solid #14532D; }
-  .legend-table tbody td { padding: 12px 10px; border-bottom: 1px solid #E9E6DC; text-align: right; vertical-align: middle; }
-  .legend-sample { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; text-align: center !important; }
+  .legend-table thead th { border-bottom: 2px solid #6B1F2A; color: #6B1F2A; font-weight: 800; padding: 10px; text-align: center; font-size: 12px; }
+  .legend-table tbody td { padding: 12px 10px; border-bottom: 1px solid #E5E7EB; text-align: right; vertical-align: middle; }
+  .legend-sample { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; text-align: center !important; font-weight: 700; }
   .legend-explain { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; line-height: 1.6; }
-  .legend-sample .status-pill { font-size: 11.5px; padding: 5px 16px; }
 """
 
 def _category_section_html_noir(rows, cat, card_col_name, agent_label, with_break=False):
     agent_label = esc(agent_label)
     title, subtitle = esc(cat["title"]), esc(cat["subtitle"].format(agent=agent_label))
-    accent, accent_soft, accent_dark = cat["accent"], cat["accent_soft"], cat["accent_dark"]
-    badge_label, icon, show_referral = esc(cat["badge_label"]), cat["icon"], cat["show_referral"]
-
-    style_vars = (
-        f"--pill-bg:{_rgba(accent, 0.16)}; --pill-border:{_rgba(accent, 0.35)}; --accent-dark:{accent_dark};"
-    )
-
-    total_people = sum(int(r.get("الأفراد الكلية", 0) or 0) for r in rows)
-    total_eligible = sum(int(r.get("الأفراد المستحقة", 0) or 0) for r in rows)
-    total_withheld = sum(int(r.get("الأفراد المحجوبين", 0) or 0) for r in rows)
+    icon, show_referral = cat["icon"], cat["show_referral"]
 
     rows_html = ""
     for i, r in enumerate(rows, start=1):
-        status_pill = _status_pills_html(r.get('الإحالة', '')) if show_referral else ""
-        total = _classic_safe_int(r.get('الأفراد الكلية'))
-        eligible = _classic_safe_int(r.get('الأفراد المستحقة'))
-        withheld = _classic_safe_int(r.get('الأفراد المحجوبين'))
-        if total > 0:
-            eligible_pct = round(eligible / total * 100, 1)
-            withheld_pct = round(withheld / total * 100, 1)
-        else:
-            eligible_pct = withheld_pct = 0
+        status_line = f'<div class="nr-status-line">{_classic_status_html(r.get("الإحالة", ""))}</div>' if show_referral and r.get('الإحالة') else ""
         rows_html += f"""
-        <div class="nr-row">
-          <div class="nr-row-num">{i:02d}</div>
-          <div class="nr-row-body">
-            <div class="nr-row-top">
-              <span class="nr-row-name">{esc(r.get('اسم رب الأسرة', ''))}</span>
-              <span class="nr-row-card">{esc(card_col_name)}: {esc(r.get(card_col_name, ''))}</span>
-            </div>
-            <div class="nr-bar-wrap">
-              <span class="nr-bar-nums">{esc(eligible)} مستحق</span>
-              <div class="nr-bar"><span class="nr-bar-eligible" style="width:{eligible_pct}%"></span><span class="nr-bar-withheld" style="width:{withheld_pct}%"></span></div>
-              <span class="nr-bar-nums">{esc(withheld)} محجوب / {esc(total)} كلي</span>
-              <span class="nr-row-blank"></span>
-            </div>
-            {status_pill}
-          </div>
-        </div>"""
+        <tr>
+          <td class="nr-idx">{i}</td>
+          <td class="nr-mono">{esc(r.get(card_col_name, ''))}</td>
+          <td class="nr-name"><div class="name-text">{esc(r.get('اسم رب الأسرة', ''))}</div>{status_line}</td>
+          <td><span class="blank-chip"></span></td>
+          <td class="nr-num">{esc(r.get('الأفراد الكلية', ''))}</td>
+          <td class="nr-num nr-eligible">{esc(r.get('الأفراد المستحقة', ''))}</td>
+          <td class="nr-num nr-withheld">{esc(r.get('الأفراد المحجوبين', ''))}</td>
+        </tr>"""
 
     section_class = "nr-section with-break" if with_break else "nr-section"
     return f"""
-    <section class="{section_class}" style="{style_vars}">
-      <div class="nr-topbar"></div>
+    <section class="{section_class}">
       <div class="nr-masthead">
-        <div class="nr-eyebrow">{icon} {badge_label}</div>
+        <div class="nr-emblem">{icon}</div>
         <h1>{title}</h1>
         <div class="nr-sub">{subtitle}</div>
-        <div class="nr-agent-badge">الوكيل: {agent_label}</div>
+        <div class="nr-agent">الوكيل: {agent_label}</div>
       </div>
-      <hr class="nr-hr">
-      <div class="nr-stats-row">
-        <div class="nr-stat"><span class="num">{len(rows)}</span><span class="lbl">عدد العوائل ({badge_label})</span></div>
-        <div class="nr-stat"><span class="num">{total_people}</span><span class="lbl">إجمالي الأفراد</span></div>
-        <div class="nr-stat"><span class="num">{total_eligible}</span><span class="lbl">الأفراد المستحقة</span></div>
-        <div class="nr-stat"><span class="num">{total_withheld}</span><span class="lbl">الأفراد المحجوبين</span></div>
-      </div>
-      <div class="nr-rows">{rows_html}</div>
+      <table>
+        {_colgroup_html()}
+        <thead><tr><th>ت</th><th>{esc(card_col_name)}</th><th>اسم رب الأسرة</th><th class="th-blank">حقل فارغ</th><th>الكلية</th><th>المستحقة</th><th>المحجوبين</th></tr></thead>
+        <tbody>{rows_html}</tbody>
+      </table>
       <div class="nr-footer">
         <span>نظام المقارنة الشامل والذكي — وكيل رقم {agent_label}</span>
         <span>عدد السجلات: {len(rows)}</span>
@@ -1560,23 +1519,21 @@ def _build_category_pdf_html_noir(rows, cat, card_col_name, agent_label):
     return _wrap_pdf_document(cat["title"], section, css=_PDF_CSS_NOIR)
 
 def _legend_section_html_noir():
-    """نفس صفحة التوضيح لكن بتصميم دفتر الأستاذ التحريري — فقاعة الحالة
-    بنفس لونها الحقيقي، والعنوان بخط علوي أخضر رفيع بدون أي صندوق."""
+    """نفس صفحة التوضيح لكن بتصميم رسمي بحت — نص الحالة ملوّن بدون أي
+    فقاعة أو صندوق (نفس تلوين _classic_status_html)، وعنوان بخط سفلي
+    عنّابي رفيع بدل أي شارة أو عداد."""
     rows_html = "".join(
-        f'<tr><td class="legend-sample"><span class="status-pill" style="background:{CATEGORY_DEFS_BY_KEY[key]["accent_soft"]}; '
-        f'border-color:{_rgba(CATEGORY_DEFS_BY_KEY[key]["accent"], 0.45)}; color:{CATEGORY_DEFS_BY_KEY[key]["accent_dark"]};">'
-        f'{esc(sample)}</span></td><td class="legend-explain">{esc(explanation)}</td></tr>'
-        for key, sample, explanation in LEGEND_ENTRIES
+        f'<tr><td class="legend-sample">{_classic_status_html(sample)}</td>'
+        f'<td class="legend-explain">{esc(explanation)}</td></tr>'
+        for _key, sample, explanation in LEGEND_ENTRIES
     )
     return f"""
     <section class="nr-section with-break">
-      <div class="nr-topbar"></div>
       <div class="nr-masthead">
-        <div class="nr-eyebrow">📖 دليل الحالات</div>
+        <div class="nr-emblem">📖</div>
         <h1>دليل شرح حالات التقرير</h1>
         <div class="nr-sub">معنى كل حالة تظهر بعمود "الإحالة" داخل التقارير</div>
       </div>
-      <hr class="nr-hr">
       <table class="legend-table">
         <thead><tr><th>الحالة كما تظهر بالتقرير</th><th>الشرح</th></tr></thead>
         <tbody>{rows_html}</tbody>
